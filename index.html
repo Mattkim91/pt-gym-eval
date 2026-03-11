@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="환자평가" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>환자 평가 관리</title>
+  <link rel="manifest" href="manifest.json" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; background: #f4f7fb; color: #1e293b; overscroll-behavior: none; height: 100vh; }
+    input, textarea, button, select { font-family: inherit; }
+    input[type="text"], input[type="number"], input[type="date"], textarea { font-size: 16px !important; }
+    .layout-shell { display: flex; flex-direction: column; height: 100vh; }
+    .topbar { position: sticky; top: 0; z-index: 100; background: #fff; border-bottom: 1.5px solid #e2e8f0; padding: 0 16px; height: 52px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.05); flex-shrink: 0; }
+    .main-area { flex: 1; overflow: hidden; display: flex; }
+    .panel-left  { width: 100%; height: 100%; overflow-y: auto; }
+    .panel-right { display: none; }
+    @media (min-width: 768px) {
+      .panel-left  { width: 300px; min-width: 260px; max-width: 320px; border-right: 1.5px solid #e2e8f0; background: #fff; flex-shrink: 0; }
+      .panel-right { display: block; flex: 1; overflow: hidden; background: #f4f7fb; }
+    }
+    .panel-scroll { height: 100%; overflow-y: auto; }
+    .pad-sm { padding: 14px 12px 40px; }
+    .pt-row { cursor: pointer; transition: background 0.1s; }
+    .pt-row:hover { background: #f0f7ff; }
+    .mmt-sel { border: 1.5px solid #e2e8f0; border-radius: 6px; padding: 5px 2px; width: 68px; outline: none; color: #1e293b; background: #fff; cursor: pointer; text-align: center; font-size: 13px; }
+    .bbs-opt { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; cursor: pointer; margin-bottom: 5px; background: #fff; color: #334155; }
+    .bbs-opt.on { border-color: #8b5cf6; background: #8b5cf6; color: #fff; }
+    .bbs-badge { min-width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; flex-shrink: 0; margin-top: 1px; background: #f3eeff; color: #8b5cf6; }
+    .bbs-opt.on .bbs-badge { background: rgba(255,255,255,0.25); color: #fff; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const MMT_OPTIONS = ["5","4","3","3-","2+","2","2-","1","0"];
+
+const ROM_SECTIONS = [
+  { title:"Shoulder", rows:["Flexion (0-180)","Extension (0-60)","Abduction (0-180)","Internal rotation (0-90)","External rotation (0-90)"] },
+  { title:"Elbow and Forearm", rows:["Flexion contracture (0-150)","Flexion (0-150)","Supination (0-80)","Pronation (0-80)"] },
+  { title:"Wrist", rows:["Flexion (0-80)","Extension (0-70)","Ulnar deviation (0-30)","Radial deviation (0-20)"] },
+  { title:"Hip", rows:["Flexion (0-120)","Extension (0-30)","Abduction (0-45)","Adduction (0-30)","Internal rotation (0-35)","External rotation (0-60)"] },
+  { title:"Knee", rows:["Flexion contracture (0-135)","Flexion (0-135)"] },
+  { title:"Ankle and Foot", rows:["Plantar flexion contracture (0-50)","Plantar flexion (0-50)","Dorsiflexion (0-20)","Inversion (0-35)","Eversion (0-20)"] },
+];
+
+const BBS_ITEMS = [
+  { label:"1. 앉은 자세에서 일어나기 (Sitting to Standing)", opts:[
+    [4,"손의 사용 없이 일어 설 수 있으며, 독립적으로 안정성을 갖고 서 있을 수 있다"],
+    [3,"손을 사용하여 스스로 일어설 수 있다"],
+    [2,"몇 번의 시도 후에 손을 사용하여 일어설 수 있다"],
+    [1,"일어서거나 안정성 있게 서 있기 위하여 최소한(minimal)의 도움이 필요하다"],
+    [0,"일어 서기 위해 중증도(moderate) 또는 최대한(maximal)의 도움이 필요하다"],
+  ]},
+  { label:"2. 지지(보조) 없이 서 있기 (Standing Unsupported)", opts:[
+    [4,"2분 동안 안정감 있게 서 있을 수 있다"],
+    [3,"감독 하에 2분 동안 서 있을 수 있다"],
+    [2,"지지 없이 30초 동안 서 있을 수 있다"],
+    [1,"몇 번의 시도 후, 지지 없이 30초 동안 서 있을 수 있다"],
+    [0,"지지 없이는 30초 동안 서 있을 수 없다"],
+  ]},
+  { label:"3. 등받이 지지 없이 앉기 (Sitting Unsupported)", opts:[
+    [4,"2분 동안 안정성 있게 앉아 있을 수 있다"],
+    [3,"감독 하에 2분 동안 앉아 있을 수 있다"],
+    [2,"30초 동안 앉아 있을 수 있다"],
+    [1,"10초 동안 앉아 있을 수 있다"],
+    [0,"지지 없이 10초 동안 앉아 있을 수 없다"],
+  ]},
+  { label:"4. 서있는 자세에서 앉기 (Standing to Sitting)", opts:[
+    [4,"최소한(minimal)으로 손을 사용하여 앉을 수 있다"],
+    [3,"손을 사용하여 몸을 잘 조절하여 앉는다"],
+    [2,"앉는 것을 조절하기 위하여 양발을 의자 뒤쪽으로 옮겨 놓는다"],
+    [1,"스스로 앉을 수는 있으나, 몸을 잘 조절하지 못한다"],
+    [0,"앉기 위해 보조가 필요하다"],
+  ]},
+  { label:"5. 이동 (Transfer)", opts:[
+    [4,"최소한으로 손을 사용하여 안정적으로 이동할 수 있다"],
+    [3,"손에 의지하여 안정성 있게 이동할 수 있다"],
+    [2,"감독 또는 언어적인 지시(verbal cue)에 의해 이동할 수 있다"],
+    [1,"이동하기 위해 한명의 보조자가 필요하다"],
+    [0,"이동하기 위해 두 명의 보조자가 필요하다"],
+  ]},
+  { label:"6. 눈 감고 지지 없이 서 있기 (Standing Unsupported with Eyes Closed)", opts:[
+    [4,"10초 동안 안정적으로 서 있을 수 있다"],
+    [3,"감독 하에 10초 동안 서 있을 수 있다"],
+    [2,"3초 동안 눈을 감고 서 있을 수 있다"],
+    [1,"3초동안 눈을 감은채 유지할 수 없지만 안정적이다"],
+    [0,"넘어질 위험이 있어 도움이 필요하다"],
+  ]},
+  { label:"7. 두발 모으고 서 있기 (Standing Unsupported with Feet Together)", opts:[
+    [4,"스스로 두 발을 모으고 안정적으로 1분 동안 서 있을 수 있다"],
+    [3,"스스로 두 발을 모으고 감독 하에 1분 동안 서 있을 수 있다"],
+    [2,"스스로 두 발을 모으고 30초 동안 유지할 수 있다"],
+    [1,"두 발을 모으고 15초 동안 서 있을 수 있으나 도움이 필요하다"],
+    [0,"자세를 취하기 위해 도움이 필요하며, 15초 동안 서 있을 수 없다"],
+  ]},
+  { label:"8. 서있는 자세에서 팔 앞으로 뻗기 (Reaching Forward with Outstretched Arm)", opts:[
+    [4,"25cm이상 자신 있게 뻗을 수 있다"],
+    [3,"12.5cm 이상 안전하게 뻗을 수 있다"],
+    [2,"5cm 이상 안전하게 뻗을 수 있다"],
+    [1,"앞으로 뻗을 수 있으나 감독이 필요하다"],
+    [0,"앞으로 뻗기 동작을 시도하는 도중 균형을 잃거나 보조가 필요하다"],
+  ]},
+  { label:"9. 서있는 자세에서 바닥에 있는 물체 집어 올리기 (Retrieving Object from Floor)", opts:[
+    [4,"안전하고 쉽게 신발을 집어 올릴 수 있다"],
+    [3,"감독 하에 신발을 집어 올릴 수 있다"],
+    [2,"집어 올릴 수는 없으나 균형을 유지하여 신발 근처 2~5cm 까지 이른다"],
+    [1,"신발을 집어 올릴 수 없으며, 수행하는 동안 감독이 필요하다"],
+    [0,"집어 올릴 수 없으며, 수행하는 동안 균형을 잃는다"],
+  ]},
+  { label:"10. 서있는 자세에서 뒤에 있는 물체 보기 (Turning to Look Behind)", opts:[
+    [4,"양쪽으로 회전하여 뒤에 있는 물체를 잘 볼 수 있으며, 체중이동이 잘 된다"],
+    [3,"오직 한쪽 뒤에 있는 물체를 볼 수 있고 체중이동도 조금 감소함을 보인다"],
+    [2,"옆으로만 회전할 수 있으나 균형은 잘 유지한다"],
+    [1,"회전할 때 감독이 필요하다"],
+    [0,"동작 수행 시 균형을 잃거나 넘어지는 것을 방지하기 위해 보조가 필요하다"],
+  ]},
+  { label:"11. 360도 회전하기 (Turning 360 Degrees)", opts:[
+    [4,"4초 또는 그 안에 양쪽 방향으로 360도 회전할 수 있다"],
+    [3,"4초 또는 그 안에 오직 한 방향으로 360도 회전할 수 있다"],
+    [2,"느리지만 안전하게 360도 회전할 수 있다"],
+    [1,"동작 수행 시 감독 또는 언어적인 지시가 필요하다"],
+    [0,"회전 하는 동안 보조가 필요하다"],
+  ]},
+  { label:"12. 발판위에 교대로 발 바꾸기 (Placing Alternate Foot on Stool)", opts:[
+    [4,"스스로 서서 안전하게 20초 내에 발을 8번 바꿀 수 있다"],
+    [3,"스스로 서서 20초를 넘겨서 8번을 완전히 바꿀 수 있다"],
+    [2,"보조나 감독 없이 4번 바꿀 수 있다"],
+    [1,"최소한의 도움으로 2번 바꿀 수 있다"],
+    [0,"넘어지는 것을 방지하기 위해 보조가 필요하거나 동작을 수행할 수 없다"],
+  ]},
+  { label:"13. 한발 앞으로 내밀어 지지하기 (Standing with One Foot in Front)", opts:[
+    [4,"30초 동안 스스로 발을 직렬로 놓고 유지할 수 있다"],
+    [3,"30초 동안 스스로 다른 쪽 발 앞에 발을 내딛고 유지할 수 있다"],
+    [2,"발을 조금 내딛고 30초 동안 유지할 수 있다"],
+    [1,"발을 내딛기 위해 도움이 필요하나 15초 동안 유지할 수 있다"],
+    [0,"서 있는 동안 또는 내딛는 동안 균형을 잃는다"],
+  ]},
+  { label:"14. 한 발로 서있기 (Standing on One Leg)", opts:[
+    [4,"스스로 한발로 10초 이상 서있을 수 있다"],
+    [3,"스스로 한발로 5-10초 동안 서 있을 수 있다"],
+    [2,"스스로 한발로 3초 동안 서 있을 수 있다"],
+    [1,"스스로 서 있을 수는 있으나 3초 정도를 유지할 수 없다"],
+    [0,"동작을 수행할 수 없거나 넘어지는 것을 방지하기 위해 보조가 필요하다"],
+  ]},
+];
+
+const MMT_SECTIONS = [
+  { group:"Upper extremities", sections:[
+    { title:"Shoulder", rows:["Flexion","Extension","Abduction"] },
+    { title:"Elbow",    rows:["Flexion","Extension"] },
+    { title:"Wrist",    rows:["Flexion","Extension"] },
+    { title:"Finger",   rows:["Flexion","Extension"] },
+  ]},
+  { group:"Lower extremities", sections:[
+    { title:"Hip",   rows:["Flexion","Extension"] },
+    { title:"Knee",  rows:["Flexion","Extension"] },
+    { title:"Ankle", rows:["Plantarflexion","Dorsiflexion"] },
+    { title:"Toe",   rows:["Flexion","Extension"] },
+  ]},
+];
+
+const DEFAULT_TEMPLATES = {
+  FAC: {
+    label: "FAC (기능적 보행 분류)",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"fac_select", label:"단계 선택", type:"fac_select", linkedTo:"score",
+        rows:[
+          ["5","완전 독립 보행 (모든 지형)"],
+          ["4","평지에서 독립 보행, 계단/경사로 보조 필요"],
+          ["3","감독 또는 구두 지시 필요"],
+          ["2","지속적이거나 간헐적 지지 필요"],
+          ["1","지속적인 도움 필요 (체중 지지 포함)"],
+          ["0","보행 불가 / 완전 보조 필요"],
+        ],
+      },
+      { id:"score", label:"FAC 점수 (0~5)", type:"number", placeholder:"0 ~ 5" },
+      { id:"assistive", label:"보조도구", type:"text", placeholder:"예: 지팡이, 워커, 없음" },
+      { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
+    ],
+  },
+  "10mWT": {
+    label: "10mWT (10m 보행 검사)",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"speed_type", label:"검사 종류", type:"toggle", options:["Comfortable speed","Maximum speed"] },
+      { id:"trial1", label:"시행 1 (초)", type:"number", placeholder:"예: 12.5" },
+      { id:"trial2", label:"시행 2 (초)", type:"number", placeholder:"예: 11.8" },
+      { id:"trial3", label:"시행 3 (초)", type:"number", placeholder:"예: 12.1" },
+      { id:"avg", label:"평균 (초)", type:"number_auto", placeholder:"자동계산" },
+      { id:"speed", label:"속도 (m/s)", type:"number_auto", placeholder:"자동계산" },
+      { id:"assistive", label:"보조도구", type:"text", placeholder:"예: 지팡이, 워커, 없음" },
+      { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
+    ],
+  },
+  ROM: {
+    label: "ROM (관절가동범위)",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"_rom", label:"", type:"rom_table" },
+      { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
+    ],
+  },
+  MMT: {
+    label: "MMT (도수근력검사)",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"_mmt", label:"", type:"mmt_sections" },
+      { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
+    ],
+  },
+  BBS: {
+    label: "BBS (버그균형척도)",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"_bbs", label:"", type:"bbs_full" },
+      { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
+    ],
+  },
+};
+
+const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC"];
+const EVAL_COLORS = {
+  "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
+  ROM:    { bg:"#edf7ee", border:"#3daa5c", text:"#1a6b35", accent:"#3daa5c" },
+  MMT:    { bg:"#fef3e2", border:"#e8961e", text:"#7a4d0a", accent:"#e8961e" },
+  BBS:    { bg:"#f3eeff", border:"#8b5cf6", text:"#4c1d95", accent:"#8b5cf6" },
+  FAC:    { bg:"#fde8ef", border:"#e53e6d", text:"#7a1030", accent:"#e53e6d" },
+};
+
+function loadData(){ try{ const r=localStorage.getItem("pt_eval_data"); if(r){ const d=JSON.parse(r); return{...d,templates:DEFAULT_TEMPLATES}; } }catch{} return{patients:[],records:{},templates:DEFAULT_TEMPLATES}; }
+function saveData(d){ localStorage.setItem("pt_eval_data",JSON.stringify(d)); }
+
+function useIsTablet(){
+  const [v,setV]=useState(window.innerWidth>=768);
+  useEffect(()=>{ const fn=()=>setV(window.innerWidth>=768); window.addEventListener("resize",fn); return()=>window.removeEventListener("resize",fn); },[]);
+  return v;
+}
+
+const IcoPlus    =()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+const IcoTrash   =()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>;
+const IcoSearch  =()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
+const IcoBack    =()=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>;
+const IcoSettings=()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
+const IcoDoc     =()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>;
+const IcoUser    =()=><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+
+const S={
+  th:{background:"#f8fafc",borderBottom:"1.5px solid #e2e8f0",padding:"9px 10px",fontSize:"11px",fontWeight:700,color:"#64748b",textAlign:"left"},
+  td:{padding:"10px",fontSize:"13px",color:"#334155",borderBottom:"1px solid #f1f5f9"},
+  table:{width:"100%",borderCollapse:"collapse"},
+  delBtn:{background:"none",border:"1px solid #fca5a5",borderRadius:"6px",padding:"4px 7px",cursor:"pointer",color:"#ef4444",display:"inline-flex",alignItems:"center"},
+  secLabel:{fontSize:"11px",fontWeight:700,color:"#94a3b8",letterSpacing:"1px",textTransform:"uppercase",marginBottom:"12px"},
+  formCard:{background:"#fff",borderRadius:"12px",border:"1.5px solid #e2e8f0",padding:"18px",marginBottom:"14px",boxShadow:"0 2px 6px rgba(0,0,0,0.04)"},
+  fieldRow:{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"16px"},
+  fieldLabel:{fontSize:"11px",fontWeight:700,color:"#64748b",letterSpacing:"0.3px",textTransform:"uppercase"},
+  input:{border:"1.5px solid #e2e8f0",borderRadius:"8px",padding:"10px 12px",outline:"none",color:"#1e293b",width:"100%",maxWidth:"320px",fontSize:"16px"},
+  inputAuto:{border:"1.5px solid #bfdbfe",borderRadius:"8px",padding:"10px 12px",outline:"none",color:"#2563eb",width:"100%",maxWidth:"320px",fontSize:"16px",background:"#eff6ff",fontWeight:600},
+  textarea:{border:"1.5px solid #e2e8f0",borderRadius:"8px",padding:"10px 12px",outline:"none",color:"#1e293b",minHeight:"80px",resize:"vertical",width:"100%",fontSize:"16px"},
+  tblSection:{marginBottom:"16px",borderRadius:"8px",overflow:"hidden",border:"1.5px solid #e2e8f0"},
+  cellInput:{border:"1.5px solid #e2e8f0",borderRadius:"5px",padding:"5px 4px",fontSize:"14px",width:"58px",outline:"none",textAlign:"center",color:"#1e293b"},
+  errorBox:{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"10px 14px",color:"#dc2626",fontSize:"12px",marginBottom:"12px"},
+};
+
+function PatientListPanel({db,persist,selectedPatient,onSelect}){
+  const [search,setSearch]=useState("");
+  const [addMode,setAddMode]=useState(false);
+  const [newId,setNewId]=useState("");
+  const [newName,setNewName]=useState("");
+  const addPt=()=>{
+    if(!newId.trim()||!newName.trim()) return;
+    if(db.patients.find(p=>p.id===newId.trim())){alert("이미 존재하는 환자 ID입니다.");return;}
+    persist({...db,patients:[...db.patients,{id:newId.trim(),name:newName.trim()}]});
+    setNewId("");setNewName("");setAddMode(false);
+  };
+  const delPt=(id)=>{
+    if(!confirm("환자를 삭제하면 모든 기록도 삭제됩니다. 계속하시겠습니까?")) return;
+    const rec={...db.records};delete rec[id];
+    persist({...db,patients:db.patients.filter(p=>p.id!==id),records:rec});
+  };
+  const filtered=db.patients.filter(p=>p.id.includes(search)||p.name.includes(search));
+  return(
+    <div className="panel-scroll"><div className="pad-sm">
+      <div style={{display:"flex",gap:"8px",marginBottom:"10px"}}>
+        <div style={{flex:1,display:"flex",alignItems:"center",gap:"7px",background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 10px"}}>
+          <IcoSearch/><input style={{border:"none",outline:"none",fontSize:"14px",color:"#334155",width:"100%",background:"transparent"}} placeholder="ID 또는 이름" value={search} onChange={e=>setSearch(e.target.value)}/>
+        </div>
+        <button style={{display:"flex",alignItems:"center",gap:"4px",background:"#2563eb",color:"#fff",border:"none",borderRadius:"10px",padding:"8px 12px",fontSize:"12px",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}} onClick={()=>setAddMode(true)}><IcoPlus/> 추가</button>
+      </div>
+      {addMode&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"7px",marginBottom:"10px",background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"12px"}}>
+          <input style={{border:"1.5px solid #e2e8f0",borderRadius:"7px",padding:"8px 10px",outline:"none",color:"#1e293b",fontSize:"15px"}} placeholder="환자 ID" value={newId} onChange={e=>setNewId(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPt()}/>
+          <input style={{border:"1.5px solid #e2e8f0",borderRadius:"7px",padding:"8px 10px",outline:"none",color:"#1e293b",fontSize:"15px"}} placeholder="이름" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPt()}/>
+          <div style={{display:"flex",gap:"7px"}}>
+            <button style={{flex:1,background:"#2563eb",color:"#fff",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",fontWeight:600,cursor:"pointer"}} onClick={addPt}>저장</button>
+            <button style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",cursor:"pointer"}} onClick={()=>{setAddMode(false);setNewId("");setNewName("");}}>취소</button>
+          </div>
+        </div>
+      )}
+      <div style={{background:"#fff",borderRadius:"12px",overflow:"hidden",border:"1.5px solid #e2e8f0",boxShadow:"0 2px 6px rgba(0,0,0,0.04)"}}>
+        {filtered.length===0?(
+          <div style={{padding:"32px",textAlign:"center",color:"#94a3b8",fontSize:"13px"}}>{search?"검색 결과 없음":"등록된 환자가 없습니다."}</div>
+        ):filtered.map(p=>{
+          const total=EVAL_KEYS.reduce((s,k)=>s+(db.records[p.id]?.[k]?.length||0),0);
+          const isSel=selectedPatient?.id===p.id;
+          return(
+            <div key={p.id} className="pt-row" style={{padding:"11px 12px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",justifyContent:"space-between",background:isSel?"#eff6ff":"white"}} onClick={()=>onSelect(p)}>
+              <div style={{minWidth:0}}>
+                <div style={{fontFamily:"monospace",color:"#2563eb",fontSize:"12px",marginBottom:"1px"}}>{p.id}</div>
+                <div style={{fontWeight:600,fontSize:"14px",color:"#1e293b"}}>{p.name}</div>
+                <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"1px"}}>{total}건의 기록</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:"6px",flexShrink:0}}>
+                {isSel&&<div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#2563eb"}}/>}
+                <button style={S.delBtn} onClick={e=>{e.stopPropagation();delPt(p.id);}}><IcoTrash/></button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div></div>
+  );
+}
+
+// ── 날짜별 한눈에 보기 ───────────────────────────────────────────
+function DateSummaryView({db,persist,patient,templates,onEditForm}){
+  const pid=patient.id;
+  const allRecs=db.records[pid]||{};
+
+  // 날짜별로 {key,rec} 묶기
+  const dateMap={};
+  EVAL_KEYS.forEach(k=>{
+    (allRecs[k]||[]).forEach(rec=>{
+      const d=rec.data?.date||"날짜 미기재";
+      if(!dateMap[d])dateMap[d]=[];
+      dateMap[d].push({key:k,rec});
+    });
+  });
+  const dates=Object.keys(dateMap).sort((a,b)=>b.localeCompare(a));
+
+  const [openDate,setOpenDate]=useState(dates[0]||null);
+
+  if(dates.length===0) return(
+    <div style={{background:"#fff",border:"1.5px dashed #cbd5e1",borderRadius:"12px",padding:"36px 20px",textAlign:"center",color:"#475569",lineHeight:2.2}}>
+      아직 저장된 기록이 없습니다.<br/><span style={{color:"#94a3b8",fontSize:"12px"}}>항목별 탭에서 기록을 추가하세요.</span>
+    </div>
+  );
+
+  return(
+    <div>
+      {dates.map(d=>{
+        const items=dateMap[d].sort((a,b)=>EVAL_KEYS.indexOf(a.key)-EVAL_KEYS.indexOf(b.key));
+        const isOpen=openDate===d;
+        return(
+          <div key={d} style={{marginBottom:"12px"}}>
+            {/* 날짜 헤더 */}
+            <div onClick={()=>setOpenDate(isOpen?null:d)}
+              style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:isOpen?"#1e293b":"#fff",borderRadius:isOpen?"10px 10px 0 0":"10px",border:"1.5px solid "+(isOpen?"#1e293b":"#e2e8f0"),cursor:"pointer",userSelect:"none"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                <span style={{fontSize:"14px",fontWeight:700,color:isOpen?"#fff":"#1e293b"}}>{d}</span>
+                <div style={{display:"flex",gap:"4px"}}>
+                  {items.map(({key})=>{
+                    const col=EVAL_COLORS[key];
+                    return <span key={key} style={{fontSize:"10px",fontWeight:700,padding:"2px 7px",borderRadius:"20px",background:isOpen?"rgba(255,255,255,0.15)":col.bg,color:isOpen?"#fff":col.accent,border:`1px solid ${isOpen?"rgba(255,255,255,0.3)":col.border}`}}>{key}</span>;
+                  })}
+                </div>
+              </div>
+              <span style={{color:isOpen?"#94a3b8":"#cbd5e1",fontSize:"16px",lineHeight:1}}>{isOpen?"▲":"▼"}</span>
+            </div>
+
+            {/* 펼쳐진 내용 */}
+            {isOpen&&(
+              <div style={{border:"1.5px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px",background:"#f8fafc",padding:"12px"}}>
+                {items.map(({key,rec})=>{
+                  const col=EVAL_COLORS[key];
+                  const tmpl=templates[key];
+                  return(
+                    <div key={rec.id} style={{background:"#fff",border:`1.5px solid ${col.border}`,borderRadius:"10px",marginBottom:"10px",overflow:"hidden"}}>
+                      {/* 항목 헤더 */}
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",background:col.bg,borderBottom:`1px solid ${col.border}`}}>
+                        <span style={{fontSize:"13px",fontWeight:800,color:col.accent}}>{key} <span style={{fontSize:"11px",fontWeight:400,color:col.text}}>{tmpl?.label||""}</span></span>
+                        <button style={{background:"none",border:`1.5px solid ${col.accent}`,borderRadius:"7px",padding:"4px 10px",fontSize:"11px",fontWeight:600,cursor:"pointer",color:col.accent}}
+                          onClick={()=>onEditForm(key,rec)}>수정</button>
+                      </div>
+                      {/* 기록 요약 */}
+                      <div style={{padding:"10px 12px"}}>
+                        <RecordSummary evalKey={key} data={rec.data} col={col} templates={templates}/>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// 기록 요약 표시 (읽기전용)
+function RecordSummary({evalKey,data,col,templates}){
+  if(!data) return null;
+  const tmpl=templates[evalKey];
+  if(!tmpl) return null;
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+      {tmpl.fields.filter(f=>f.id!=="date").map(field=>{
+        const val=data[field.id];
+
+        if(field.type==="fac_select"){
+          const score=data["score"]??"";
+          const row=field.rows.find(([v])=>v===String(score));
+          return(
+            <div key={field.id} style={{fontSize:"13px",color:"#334155"}}>
+              <span style={{fontWeight:700,color:col.accent}}>FAC {score}점</span>
+              {row&&<span style={{color:"#64748b",fontSize:"12px"}}> — {row[1]}</span>}
+            </div>
+          );
+        }
+        if(field.id==="score"&&evalKey==="FAC") return null; // FAC는 위에서 처리
+
+        if(field.type==="rom_table"){
+          const romData=val||{};
+          return(
+            <div key={field.id}>
+              {ROM_SECTIONS.map((sec,si)=>(
+                <div key={si} style={{...S.tblSection,marginBottom:"10px"}}>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{...S.table,marginBottom:0}}>
+                      <thead><tr>
+                        <th style={{...S.th,width:"28%",textAlign:"center"}}>Right</th>
+                        <th style={{...S.th,textAlign:"center",background:"#e8f4fd",color:"#1a5f8a"}}>{sec.title}</th>
+                        <th style={{...S.th,width:"28%",textAlign:"center"}}>Left</th>
+                      </tr></thead>
+                      <tbody>
+                        {sec.rows.map((row,ri)=>{
+                          const key=si+"_"+ri;
+                          const r=romData[key]?.right||"—";
+                          const l=romData[key]?.left||"—";
+                          return(
+                            <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                              <td style={{...S.td,textAlign:"center",fontWeight:600,color:"#3daa5c"}}>{r}</td>
+                              <td style={{...S.td,fontSize:"12px",color:"#475569",textAlign:"center"}}>{row}</td>
+                              <td style={{...S.td,textAlign:"center",fontWeight:600,color:"#3daa5c"}}>{l}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+          ))}
+            </div>
+          );
+        }
+        if(field.type==="mmt_sections"){
+          const md=val||{};
+          return(
+            <div key={field.id}>
+              {MMT_SECTIONS.map((grp,gi)=>(
+                <div key={gi} style={{marginBottom:"14px"}}>
+                  <div style={{fontSize:"12px",fontWeight:800,color:"#7a4d0a",background:"#fef3e2",padding:"7px 12px",borderRadius:"8px 8px 0 0",border:"1.5px solid #e8961e",borderBottom:"none"}}>{grp.group}</div>
+                  <div style={{border:"1.5px solid #e8961e",borderRadius:"0 0 8px 8px",overflow:"hidden"}}>
+                    {grp.sections.map((sec,si)=>(
+                      <table key={si} style={{...S.table,marginBottom:0}}>
+                        <thead><tr>
+                          <th style={{...S.th,background:"#fef9f0",color:"#7a4d0a",textAlign:"center"}}>{sec.title}</th>
+                          <th style={{...S.th,width:"28%",textAlign:"center"}}>Right</th>
+                          <th style={{...S.th,width:"28%",textAlign:"center"}}>Left</th>
+                        </tr></thead>
+                        <tbody>
+                          {sec.rows.map((row,ri)=>{
+                            const key=gi+"_"+si+"_"+ri;
+                            return(
+                              <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                                <td style={{...S.td,fontSize:"13px",paddingLeft:"18px"}}>{row}</td>
+                                <td style={{...S.td,textAlign:"center",fontWeight:600,color:"#e8961e"}}>{md[key]?.right??"5"}</td>
+                                <td style={{...S.td,textAlign:"center",fontWeight:600,color:"#e8961e"}}>{md[key]?.left??"5"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        if(field.type==="mmt_table"){
+          const td=val||[];
+          return(
+            <div key={field.id} style={S.tblSection}>
+              <div style={{overflowX:"auto"}}>
+                <table style={{...S.table,marginBottom:0}}>
+                  <thead><tr>
+                    <th style={S.th}>부위</th><th style={S.th}>근육/운동</th>
+                    <th style={{...S.th,textAlign:"center"}}>좌</th>
+                    <th style={{...S.th,textAlign:"center"}}>우</th>
+                  </tr></thead>
+                  <tbody>
+                    {field.rows.map((row,ri)=>(
+                      <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                        <td style={S.td}>{row[0]}</td><td style={S.td}>{row[1]}</td>
+                        <td style={{...S.td,textAlign:"center",fontWeight:600,color:col.accent}}>{td[ri]?.left??"—"}</td>
+                        <td style={{...S.td,textAlign:"center",fontWeight:600,color:col.accent}}>{td[ri]?.right??"—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="table"){
+          const td=val||[];
+          const two=field.headers.length>=4, one=field.headers.length===3;
+          return(
+            <div key={field.id} style={S.tblSection}>
+              <div style={{overflowX:"auto"}}>
+                <table style={{...S.table,marginBottom:0}}>
+                  <thead><tr>{field.headers.map((h,i)=><th key={i} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {field.rows.map((row,ri)=>(
+                      <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                        {row.map((cell,ci)=><td key={ci} style={S.td}>{cell}</td>)}
+                        {two&&<><td style={{...S.td,fontWeight:600,color:col.accent}}>{td[ri]?.left||"—"}</td><td style={{...S.td,fontWeight:600,color:col.accent}}>{td[ri]?.right||"—"}</td></>}
+                        {one&&!two&&<td style={{...S.td,fontWeight:600,color:col.accent}}>{td[ri]?.score||"—"}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="bbs_full"){
+          const scores=val||[];
+          const total=data.bbs_total??scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          return(
+            <div key={field.id}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"#f3eeff",borderRadius:"8px",border:"1.5px solid #8b5cf6",marginBottom:"8px"}}>
+                <span style={{fontSize:"12px",fontWeight:700,color:"#4c1d95"}}>BBS 총점</span>
+                <span style={{fontSize:"20px",fontWeight:800,color:"#8b5cf6"}}>{total}<span style={{fontSize:"12px",color:"#94a3b8",fontWeight:400}}> / 56</span></span>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
+                {BBS_ITEMS.map((item,ri)=>{
+                  const s=scores[ri]??4;
+                  return <span key={ri} style={{fontSize:"11px",padding:"2px 8px",borderRadius:"20px",background:"#f3eeff",color:"#8b5cf6",fontWeight:600}}>{ri+1}: {s}점</span>;
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="toggle"||field.type==="number"||field.type==="number_auto"||field.type==="text"){
+          if(!val&&val!==0) return null;
+          return(
+            <div key={field.id} style={{display:"flex",gap:"6px",alignItems:"baseline"}}>
+              <span style={{fontSize:"11px",color:"#94a3b8",minWidth:"80px"}}>{field.label}</span>
+              <span style={{fontSize:"13px",fontWeight:600,color:"#1e293b"}}>{val}</span>
+            </div>
+          );
+        }
+
+        if(field.type==="textarea"&&val){
+          return(
+            <div key={field.id} style={{fontSize:"12px",color:"#64748b",background:"#f8fafc",padding:"7px 10px",borderRadius:"7px",border:"1px solid #e2e8f0"}}>{val}</div>
+          );
+        }
+
+        return null;
+      })}
+    </div>
+  );
+}
+
+function ContentPanel({db,persist,patient,isTablet,onBackToList}){
+  const [tab,setTab]=useState("item");   // "item" | "date"
+  const [rv,setRv]=useState("eval-select");
+  const [ek,setEk]=useState(null);
+  const [editRec,setEditRec]=useState(null);
+  const [tmplJson,setTmplJson]=useState("");
+  const [tmplErr,setTmplErr]=useState("");
+  useEffect(()=>{setRv("eval-select");setEk(null);setEditRec(null);setTab("item");},[patient?.id]);
+  const getRecs=(k)=>(db.records[patient?.id]?.[k]||[]).slice().sort((a,b)=>b.savedAt-a.savedAt);
+  const saveRec=(k,data,rid)=>{
+    const rec={...db.records},pid=patient.id;
+    if(!rec[pid])rec[pid]={};if(!rec[pid][k])rec[pid][k]=[];
+    if(rid!=null)rec[pid][k]=rec[pid][k].map(r=>r.id===rid?{...r,data,savedAt:Date.now()}:r);
+    else rec[pid][k]=[...rec[pid][k],{id:Date.now(),data,savedAt:Date.now()}];
+    persist({...db,records:rec});
+  };
+  const delRec=(k,rid)=>{
+    if(!confirm("이 기록을 삭제하시겠습니까?")) return;
+    const rec={...db.records};rec[patient.id][k]=rec[patient.id][k].filter(r=>r.id!==rid);persist({...db,records:rec});
+  };
+  const goBack=()=>{
+    if(rv==="eval-form"){setEditRec(null);setRv(tab==="date"?"date-view":"eval-history");}
+    else if(rv==="eval-history"){setEk(null);setRv("eval-select");}
+    else if(rv==="template-editor")setRv("eval-select");
+    else if(rv==="date-view")setRv("eval-select");
+    else if(rv==="eval-select"&&!isTablet)onBackToList();
+  };
+  const crumb=()=>{
+    if(!patient) return "";
+    const base=`${patient.id}  ${patient.name}`;
+    if(rv==="template-editor") return "서식 편집";
+    if(ek&&rv==="eval-form") return `${base}  ›  ${ek} 수정`;
+    if(ek&&rv==="eval-history") return `${base}  ›  ${ek}`;
+    return base;
+  };
+
+  // 날짜별 탭에서 수정 버튼 클릭 시
+  const handleDateEditForm=(key,rec)=>{
+    setEk(key);setEditRec(rec);setRv("eval-form");
+  };
+
+  if(!patient) return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",flexDirection:"column",gap:"10px"}}>
+      <IcoUser/><span style={{color:"#94a3b8",fontSize:"14px"}}>환자를 선택하세요</span>
+    </div>
+  );
+  const showBack=rv!=="eval-select"||!isTablet;
+  const showTabs=rv==="eval-select"&&!["template-editor"].includes(rv);
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      {/* 서브 헤더 */}
+      <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:"0 14px",height:"44px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:"4px",minWidth:0}}>
+          {showBack&&<button onClick={goBack} style={{background:"none",border:"none",padding:"4px 4px 4px 0",color:"#475569",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}><IcoBack/></button>}
+          <span style={{fontSize:"13px",fontWeight:600,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{crumb()}</span>
+        </div>
+        {rv==="eval-select"&&(
+          <button style={{display:"flex",alignItems:"center",gap:"4px",background:"none",border:"1px solid #cbd5e1",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#475569",cursor:"pointer"}}
+            onClick={()=>{setTmplJson(JSON.stringify(db.templates,null,2));setTmplErr("");setRv("template-editor");}}>
+            <IcoSettings/> 서식 편집
+          </button>
+        )}
+      </div>
+
+      {/* 탭 (eval-select 화면에서만 표시) */}
+      {rv==="eval-select"&&(
+        <div style={{display:"flex",borderBottom:"1.5px solid #e2e8f0",background:"#fff",flexShrink:0}}>
+          {[["item","항목별"],["date","날짜별"]].map(([t,label])=>(
+            <button key={t} onClick={()=>setTab(t)}
+              style={{flex:1,padding:"10px 0",fontSize:"13px",fontWeight:tab===t?700:400,color:tab===t?"#2563eb":"#94a3b8",border:"none",borderBottom:tab===t?"2.5px solid #2563eb":"2.5px solid transparent",background:"none",cursor:"pointer",transition:"all 0.15s"}}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="panel-scroll" style={{flex:1}}><div className="pad-sm">
+
+        {/* 항목별 탭 */}
+        {rv==="eval-select"&&tab==="item"&&(
+          <><p style={S.secLabel}>평가 항목 선택</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"10px"}}>
+            {EVAL_KEYS.map(key=>{
+              const col=EVAL_COLORS[key],tmpl=db.templates[key],cnt=getRecs(key).length;
+              return(<div key={key} onClick={()=>{setEk(key);setRv("eval-history");}} style={{border:`2px solid ${col.border}`,borderRadius:"12px",padding:"16px 14px",cursor:"pointer",background:col.bg,boxShadow:"0 2px 6px rgba(0,0,0,0.05)"}}>
+                <div style={{fontSize:"18px",fontWeight:800,color:col.accent,marginBottom:"2px"}}>{key}</div>
+                <div style={{fontSize:"11px",color:col.text,marginBottom:"8px",lineHeight:1.4}}>{tmpl?.label||key}</div>
+                <div style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"11px",fontWeight:600,color:col.accent}}><IcoDoc/> {cnt}건</div>
+              </div>);
+            })}
+          </div></>
+        )}
+
+        {/* 날짜별 탭 */}
+        {rv==="eval-select"&&tab==="date"&&(
+          <><p style={S.secLabel}>날짜별 보기</p>
+          <DateSummaryView db={db} persist={persist} patient={patient} templates={db.templates} onEditForm={handleDateEditForm}/></>
+        )}
+
+        {rv==="eval-history"&&ek&&(
+          <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+            <p style={S.secLabel}>저장된 기록</p>
+            <button style={{display:"flex",alignItems:"center",gap:"4px",background:EVAL_COLORS[ek].accent,color:"#fff",border:"none",borderRadius:"9px",padding:"7px 12px",fontSize:"12px",fontWeight:600,cursor:"pointer"}} onClick={()=>{setEditRec(null);setRv("eval-form");}}><IcoPlus/> 새 기록</button>
+          </div>
+          {getRecs(ek).length===0?(
+            <div style={{background:"#fff",border:"1.5px dashed #cbd5e1",borderRadius:"12px",padding:"36px 20px",textAlign:"center",color:"#475569",lineHeight:2.2}}>아직 기록이 없습니다.<br/><span style={{color:"#94a3b8",fontSize:"12px"}}>새 기록 버튼을 눌러 시작하세요.</span></div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+              {getRecs(ek).map(rec=>{
+                const col=EVAL_COLORS[ek];
+                const extra=ek==="BBS"&&rec.data?.bbs_total!==undefined?` · BBS ${rec.data.bbs_total}점`:"";
+                return(
+                  <div key={rec.id} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderLeft:`4px solid ${col.accent}`,borderRadius:"10px",padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px"}}>
+                    <div>
+                      <div style={{fontSize:"13px",fontWeight:700,color:col.accent}}>검사일: {rec.data?.date||"미기재"}{extra}</div>
+                      <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"2px"}}>{new Date(rec.savedAt).toLocaleString("ko-KR")}</div>
+                    </div>
+                    <div style={{display:"flex",gap:"7px",alignItems:"center"}}>
+                      <button style={{background:"none",border:`1.5px solid ${col.accent}`,borderRadius:"7px",padding:"5px 12px",fontSize:"12px",fontWeight:600,cursor:"pointer",color:col.accent}} onClick={()=>{setEditRec(rec);setRv("eval-form");}}>열람/수정</button>
+                      <button style={S.delBtn} onClick={()=>delRec(ek,rec.id)}><IcoTrash/></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}</>
+        )}
+
+        {rv==="eval-form"&&ek&&(
+          <EvalForm template={db.templates[ek]} col={EVAL_COLORS[ek]} initialData={editRec?.data||null}
+            onSave={data=>{
+              saveRec(ek,data,editRec?.id??null);
+              setEditRec(null);
+              // 날짜별 탭에서 수정한 경우 날짜별 탭으로 복귀
+              if(tab==="date"){setRv("eval-select");}
+              else{setRv("eval-history");}
+            }}
+            onCancel={()=>{
+              setEditRec(null);
+              if(tab==="date"){setRv("eval-select");}
+              else{setRv("eval-history");}
+            }}/>
+        )}
+
+        {rv==="template-editor"&&(
+          <><p style={S.secLabel}>서식 편집 (JSON)</p>
+          <p style={{fontSize:"12px",color:"#64748b",marginBottom:"10px"}}>각 평가 항목 구조를 직접 수정할 수 있습니다.</p>
+          {tmplErr&&<div style={S.errorBox}>{tmplErr}</div>}
+          <textarea style={{width:"100%",minHeight:"360px",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"12px",fontSize:"12px",fontFamily:"monospace",outline:"none",color:"#1e293b",resize:"vertical",lineHeight:1.6}} value={tmplJson} onChange={e=>setTmplJson(e.target.value)} spellCheck={false}/>
+          <div style={{display:"flex",gap:"8px",marginTop:"10px"}}>
+            <button style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:"9px",padding:"11px 24px",fontSize:"14px",fontWeight:700,cursor:"pointer"}} onClick={()=>{try{const p=JSON.parse(tmplJson);persist({...db,templates:p});setRv("eval-select");setTmplErr("");}catch(e){setTmplErr("JSON 오류: "+e.message);}}}>저장</button>
+            <button style={{background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"9px",padding:"11px 18px",fontSize:"14px",cursor:"pointer"}} onClick={()=>setRv("eval-select")}>취소</button>
+          </div></>
+        )}
+
+      </div></div>
+    </div>
+  );
+}
+
+function App(){
+  const [db,setDb]=useState(()=>loadData());
+  const [patient,setPatient]=useState(null);
+  const [mobileView,setMobileView]=useState("list");
+  const isTablet=useIsTablet();
+  const persist=nd=>{setDb(nd);saveData(nd);};
+  const selectPatient=p=>{setPatient(p);if(!isTablet)setMobileView("content");};
+  return(
+    <div className="layout-shell">
+      <div className="topbar">
+        <div style={{display:"flex",alignItems:"center",gap:"6px",minWidth:0,flex:1}}>
+          {!isTablet&&mobileView==="content"&&(
+            <button onClick={()=>setMobileView("list")} style={{background:"none",border:"none",padding:"6px 6px 6px 0",color:"#475569",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}><IcoBack/></button>
+          )}
+          <span style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>
+            {isTablet?"환자 평가 관리":(mobileView==="content"&&patient?`${patient.id}  ${patient.name}`:"환자 평가 관리")}
+          </span>
+        </div>
+      </div>
+      <div className="main-area">
+        <div className="panel-left" style={!isTablet&&mobileView==="content"?{display:"none"}:{}}>
+          <PatientListPanel db={db} persist={persist} selectedPatient={patient} onSelect={selectPatient}/>
+        </div>
+        <div className="panel-right" style={!isTablet&&mobileView==="list"?{display:"none"}:{display:"block",flex:1,overflow:"hidden"}}>
+          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={()=>setMobileView("list")}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EvalForm({template,col,initialData,onSave,onCancel}){
+  const todayStr=new Date().toISOString().slice(0,10);
+  const buildInit=()=>{
+    const init={};
+    (template?.fields||[]).forEach(f=>{
+      if(f.type==="table") init[f.id]=f.rows.map(row=>({left:"",right:row.length>=3?"":undefined,score:row.length<3?"":undefined}));
+      else if(f.type==="mmt_table") init[f.id]=f.rows.map(()=>({left:"5",right:"5"}));
+      else if(f.type==="mmt_sections") init[f.id]={};
+      else if(f.type==="bbs_full") init[f.id]=BBS_ITEMS.map(item=>item.opts[0][0]);
+      else if(f.type==="rom_table") init[f.id]={};
+      else if(f.type==="date") init[f.id]=todayStr;
+      else if(f.type==="toggle") init[f.id]=f.options?.[f.options.length-1]||"";
+      else init[f.id]="";
+    });
+    return init;
+  };
+  const [fd,setFd]=useState(()=>initialData?JSON.parse(JSON.stringify(initialData)):buildInit());
+  const setF=(id,val)=>setFd(prev=>({...prev,[id]:val}));
+  const setCell=(tid,ri,ck,val)=>setFd(prev=>{const arr=[...(prev[tid]||[])];arr[ri]={...arr[ri],[ck]:val};return{...prev,[tid]:arr};});
+  const setBbs=(ri,score)=>setFd(prev=>{const arr=[...(prev["_bbs"]||BBS_ITEMS.map(i=>i.opts[0][0]))];arr[ri]=score;return{...prev,"_bbs":arr};});
+
+  // 10mWT 자동계산
+  useEffect(()=>{
+    if(template?.fields?.find(f=>f.id==="avg"&&f.type==="number_auto")){
+      const vals=["trial1","trial2","trial3"].map(k=>parseFloat(fd[k])).filter(v=>!isNaN(v));
+      if(vals.length>0){
+        const avg=(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2);
+        const speed=(10/parseFloat(avg)).toFixed(3);
+        setFd(prev=>({...prev,avg,speed}));
+      } else {
+        setFd(prev=>({...prev,avg:"",speed:""}));
+      }
+    }
+  },[fd.trial1,fd.trial2,fd.trial3]);
+
+  const bbsTotal=()=>(fd["_bbs"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+
+  return(
+    <div><div style={S.formCard}>
+      {(template?.fields||[]).map(field=>{
+
+        if(field.type==="fac_select"){
+          const sel=fd[field.id]??"";
+          return(
+            <div key={field.id} style={S.fieldRow}>
+              <label style={S.fieldLabel}>{field.label}</label>
+              <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+                {field.rows.map(([val,desc])=>{
+                  const on=sel===val;
+                  return(
+                    <div key={val} onClick={()=>{setF(field.id,val);if(field.linkedTo)setF(field.linkedTo,val);}}
+                      style={{display:"flex",alignItems:"center",gap:"10px",padding:"10px 12px",borderRadius:"9px",border:`1.5px solid ${on?col.accent:"#e2e8f0"}`,cursor:"pointer",background:on?col.accent:"#fff",color:on?"#fff":"#334155",transition:"all 0.15s"}}>
+                      <span style={{minWidth:"26px",height:"26px",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:"13px",flexShrink:0,background:on?"rgba(255,255,255,0.25)":col.bg,color:on?"#fff":col.accent}}>{val}</span>
+                      <span style={{fontSize:"13px"}}>{desc}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="rom_table"){
+          const romData=fd["_rom"]||{};
+          const setRom=(si,ri,side,val)=>setFd(prev=>{
+            const d={...(prev["_rom"]||{})};
+            const key=si+"_"+ri;
+            d[key]={...(d[key]||{}),[side]:val};
+            return{...prev,"_rom":d};
+          });
+          return(
+            <div key={field.id} style={{marginBottom:"8px"}}>
+              {ROM_SECTIONS.map((sec,si)=>(
+                <div key={si} style={{...S.tblSection,marginBottom:"10px"}}>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{...S.table,marginBottom:0}}>
+                      <thead><tr>
+                        <th style={{...S.th,width:"28%",textAlign:"center"}}>Right</th>
+                        <th style={{...S.th,textAlign:"center",background:"#e8f4fd",color:"#1a5f8a"}}>{sec.title}</th>
+                        <th style={{...S.th,width:"28%",textAlign:"center"}}>Left</th>
+                      </tr></thead>
+                      <tbody>
+                        {sec.rows.map((row,ri)=>{
+                          const key=si+"_"+ri;
+                          return(
+                            <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                              <td style={{...S.td,textAlign:"center"}}>
+                                <input style={S.cellInput} inputMode="decimal" value={romData[key]?.right||""} onChange={e=>setRom(si,ri,"right",e.target.value.replace(/[^0-9().+\-]/g,""))} placeholder="°"/>
+                              </td>
+                              <td style={{...S.td,fontSize:"12px",color:"#475569",textAlign:"center"}}>{row}</td>
+                              <td style={{...S.td,textAlign:"center"}}>
+                                <input style={S.cellInput} inputMode="decimal" value={romData[key]?.left||""} onChange={e=>setRom(si,ri,"left",e.target.value.replace(/[^0-9().+\-]/g,""))} placeholder="°"/>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        if(field.type==="mmt_sections"){
+          const md=fd["_mmt"]||{};
+          const setMmt=(gi,si,ri,side,val)=>setFd(prev=>{
+            const d={...(prev["_mmt"]||{})};
+            const key=gi+"_"+si+"_"+ri;
+            d[key]={...(d[key]||{left:"5",right:"5"}),[side]:val};
+            return{...prev,"_mmt":d};
+          });
+          return(
+            <div key={field.id} style={{marginBottom:"8px"}}>
+              {MMT_SECTIONS.map((grp,gi)=>(
+                <div key={gi} style={{marginBottom:"14px"}}>
+                  <div style={{fontSize:"12px",fontWeight:800,color:"#7a4d0a",background:"#fef3e2",padding:"7px 12px",borderRadius:"8px 8px 0 0",border:"1.5px solid #e8961e",borderBottom:"none",letterSpacing:"0.5px"}}>{grp.group}</div>
+                  <div style={{border:"1.5px solid #e8961e",borderRadius:"0 0 8px 8px",overflow:"hidden"}}>
+                    {grp.sections.map((sec,si)=>(
+                      <table key={si} style={{...S.table,marginBottom:0}}>
+                        <thead><tr>
+                          <th style={{...S.th,background:"#fef9f0",color:"#7a4d0a",textAlign:"center"}}>{sec.title}</th>
+                          <th style={{...S.th,width:"28%",textAlign:"center"}}>Right</th>
+                          <th style={{...S.th,width:"28%",textAlign:"center"}}>Left</th>
+                        </tr></thead>
+                        <tbody>
+                          {sec.rows.map((row,ri)=>{
+                            const key=gi+"_"+si+"_"+ri;
+                            return(
+                              <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                                <td style={{...S.td,fontSize:"13px",paddingLeft:"18px"}}>{row}</td>
+                                <td style={{...S.td,textAlign:"center"}}>
+                                  <select className="mmt-sel" value={md[key]?.right??"5"} onChange={e=>setMmt(gi,si,ri,"right",e.target.value)}>
+                                    {MMT_OPTIONS.map(o=><option key={o} value={o}>{o}</option>)}
+                                  </select>
+                                </td>
+                                <td style={{...S.td,textAlign:"center"}}>
+                                  <select className="mmt-sel" value={md[key]?.left??"5"} onChange={e=>setMmt(gi,si,ri,"left",e.target.value)}>
+                                    {MMT_OPTIONS.map(o=><option key={o} value={o}>{o}</option>)}
+                                  </select>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        if(field.type==="mmt_table"){
+          const td=fd[field.id]||field.rows.map(()=>({left:"5",right:"5"}));
+          return(
+            <div key={field.id} style={S.tblSection}>
+              <div style={{overflowX:"auto"}}>
+                <table style={{...S.table,marginBottom:0}}>
+                  <thead><tr>
+                    <th style={S.th}>부위</th><th style={S.th}>근육/운동</th>
+                    <th style={{...S.th,textAlign:"center"}}>좌측</th>
+                    <th style={{...S.th,textAlign:"center"}}>우측</th>
+                  </tr></thead>
+                  <tbody>
+                    {field.rows.map((row,ri)=>(
+                      <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                        <td style={S.td}>{row[0]}</td><td style={S.td}>{row[1]}</td>
+                        <td style={{...S.td,textAlign:"center"}}>
+                          <select className="mmt-sel" value={td[ri]?.left??"5"} onChange={e=>setCell(field.id,ri,"left",e.target.value)}>
+                            {MMT_OPTIONS.map(o=><option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </td>
+                        <td style={{...S.td,textAlign:"center"}}>
+                          <select className="mmt-sel" value={td[ri]?.right??"5"} onChange={e=>setCell(field.id,ri,"right",e.target.value)}>
+                            {MMT_OPTIONS.map(o=><option key={o} value={o}>{o}</option>)}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="bbs_full"){
+          const scores=fd["_bbs"]||BBS_ITEMS.map(i=>i.opts[0][0]);
+          const total=scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          return(
+            <div key={field.id}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px",padding:"12px 16px",background:"#f3eeff",borderRadius:"10px",border:"1.5px solid #8b5cf6"}}>
+                <span style={{fontSize:"13px",fontWeight:700,color:"#4c1d95"}}>BBS 총점</span>
+                <span style={{fontSize:"24px",fontWeight:800,color:"#8b5cf6"}}>{total} <span style={{fontSize:"14px",color:"#94a3b8",fontWeight:400}}>/ 56</span></span>
+              </div>
+              {BBS_ITEMS.map((item,ri)=>{
+                const selected=scores[ri];
+                return(
+                  <div key={ri} style={{marginBottom:"14px"}}>
+                    <div style={{fontSize:"12px",fontWeight:700,color:"#4c1d95",marginBottom:"6px"}}>{item.label}</div>
+                    {item.opts.map(([score,desc])=>{
+                      const on=selected===score;
+                      return(
+                        <div key={score} className={`bbs-opt${on?" on":""}`} onClick={()=>setBbs(ri,score)}>
+                          <span className="bbs-badge">{score}</span>
+                          <span style={{fontSize:"12px",lineHeight:1.5}}>{desc}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        }
+
+        if(field.type==="table"){
+          const td=fd[field.id]||[],two=field.headers.length>=4,one=field.headers.length===3;
+          return(
+            <div key={field.id} style={S.tblSection}><div style={{overflowX:"auto"}}>
+              <table style={{...S.table,marginBottom:0}}>
+                <thead><tr>{field.headers.map((h,i)=><th key={i} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {field.rows.map((row,ri)=>(
+                    <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                      {row.map((cell,ci)=><td key={ci} style={S.td}>{cell}</td>)}
+                      {two&&<><td style={S.td}><input style={S.cellInput} value={td[ri]?.left??""} onChange={e=>setCell(field.id,ri,"left",e.target.value)}/></td><td style={S.td}><input style={S.cellInput} value={td[ri]?.right??""} onChange={e=>setCell(field.id,ri,"right",e.target.value)}/></td></>}
+                      {one&&!two&&<td style={S.td}><input style={S.cellInput} value={td[ri]?.score??""} onChange={e=>setCell(field.id,ri,"score",e.target.value)}/></td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div></div>
+          );
+        }
+
+        if(field.type==="number_auto"){
+          return(
+            <div key={field.id} style={S.fieldRow}>
+              <label style={S.fieldLabel}>{field.label} <span style={{color:"#3b9ede",fontSize:"10px",fontWeight:600,marginLeft:"4px"}}>● 자동계산</span></label>
+              <input style={S.inputAuto} type="text" readOnly value={fd[field.id]||""} placeholder={field.placeholder}/>
+            </div>
+          );
+        }
+
+        return(
+          <div key={field.id} style={S.fieldRow}>
+            <label style={S.fieldLabel}>{field.label}</label>
+            {field.type==="toggle"?(
+              <div style={{display:"flex",gap:"7px",flexWrap:"wrap"}}>
+                {field.options.map(opt=>{
+                  const on=fd[field.id]===opt;
+                  return <button key={opt} onClick={()=>setF(field.id,opt)} style={{border:`1.5px solid ${on?col.accent:"#cbd5e1"}`,borderRadius:"9px",padding:"8px 16px",fontSize:"14px",cursor:"pointer",background:on?col.accent:"#fff",color:on?"#fff":"#475569",fontWeight:on?700:400}}>{opt}</button>;
+                })}
+              </div>
+            ):field.type==="textarea"?(
+              <textarea style={S.textarea} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
+            ):(
+              <input style={S.input} type={field.type||"text"} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
+            )}
+          </div>
+        );
+      })}
+    </div>
+    <div style={{display:"flex",gap:"8px"}}>
+      <button style={{background:col.accent,color:"#fff",border:"none",borderRadius:"10px",padding:"11px 26px",fontSize:"14px",fontWeight:700,cursor:"pointer"}}
+        onClick={()=>{
+          const final={...fd};
+          if(template?.fields?.find(f=>f.type==="bbs_full")){
+            final.bbs_total=(fd["_bbs"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          }
+          onSave(final);
+        }}>저장</button>
+      <button style={{background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px 18px",fontSize:"14px",cursor:"pointer"}} onClick={onCancel}>취소</button>
+    </div></div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
