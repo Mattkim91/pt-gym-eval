@@ -32,7 +32,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v2.8</title>
+  <title>환자 평가 관리 v2.10</title>
   <link rel="manifest" href="manifest.json" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -512,6 +512,8 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
   const [editId,setEditId]=useState("");
   const [editName,setEditName]=useState("");
   const [backupMsg,setBackupMsg]=useState("");
+  const [sortKey,setSortKey]=useState("date");   // "date"|"id"|"name"
+  const [sortAsc,setSortAsc]=useState(false);    // false=최신/내림차순, true=오래된/오름차순
   const fileInputRef=React.useRef(null);
 
   const exportBackup=async()=>{
@@ -647,7 +649,23 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
     setEditPt(null);
   };
 
-  const filtered=db.patients.filter(p=>p.id.includes(search)||p.name.includes(search));
+  const getLatestSavedAt=(pid)=>{
+    let latest=0;
+    EVAL_KEYS.forEach(k=>{
+      (db.records[pid]?.[k]||[]).forEach(r=>{ if(r.savedAt>latest) latest=r.savedAt; });
+    });
+    return latest;
+  };
+  const filtered=db.patients
+    .filter(p=>p.id.includes(search)||p.name.includes(search))
+    .slice()
+    .sort((a,b)=>{
+      let cmp=0;
+      if(sortKey==="date") cmp=getLatestSavedAt(a.id)-getLatestSavedAt(b.id);
+      else if(sortKey==="id") cmp=a.id.localeCompare(b.id,"ko",{numeric:true});
+      else if(sortKey==="name") cmp=a.name.localeCompare(b.name,"ko");
+      return sortAsc?cmp:-cmp;
+    });
   const inputStyle={border:"1.5px solid #e2e8f0",borderRadius:"7px",padding:"8px 10px",outline:"none",color:"#1e293b",fontSize:"15px",width:"100%"};
 
   return(
@@ -655,11 +673,24 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
       <button style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:"7px",background:"#2563eb",color:"#fff",border:"none",borderRadius:"11px",padding:"13px",fontSize:"15px",fontWeight:700,cursor:"pointer",marginBottom:"10px",boxShadow:"0 2px 8px rgba(37,99,235,0.18)"}} onClick={quickAdd}>
         <IcoPlus/> 새 환자 평가
       </button>
-      <div style={{display:"flex",gap:"8px",marginBottom:"10px"}}>
+      <div style={{display:"flex",gap:"8px",marginBottom:"8px"}}>
         <div style={{flex:1,display:"flex",alignItems:"center",gap:"7px",background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 10px"}}>
           <IcoSearch/><input style={{border:"none",outline:"none",fontSize:"14px",color:"#334155",width:"100%",background:"transparent"}} placeholder="ID 또는 이름 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
         <button style={{display:"flex",alignItems:"center",gap:"4px",background:"#f1f5f9",color:"#475569",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 12px",fontSize:"12px",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}} onClick={()=>{setAddMode(true);setEditPt(null);}}><IcoPlus/> 등록</button>
+      </div>
+      {/* 정렬 버튼 */}
+      <div style={{display:"flex",gap:"5px",marginBottom:"10px",alignItems:"center"}}>
+        <span style={{fontSize:"11px",color:"#94a3b8",flexShrink:0}}>정렬</span>
+        {[["date","날짜"],["name","이름"],["id","ID"]].map(([k,label])=>(
+          <button key={k} onClick={()=>{ if(sortKey===k) setSortAsc(a=>!a); else{setSortKey(k);setSortAsc(k==="date"?false:true);} }}
+            style={{padding:"5px 10px",borderRadius:"20px",fontSize:"12px",fontWeight:600,cursor:"pointer",border:"1.5px solid",
+              borderColor:sortKey===k?"#2563eb":"#e2e8f0",
+              background:sortKey===k?"#eff6ff":"#f8fafc",
+              color:sortKey===k?"#2563eb":"#94a3b8"}}>
+            {label} {sortKey===k?(sortAsc?"↑":"↓"):""}
+          </button>
+        ))}
       </div>
 
       {/* 신규 추가 폼 */}
@@ -693,6 +724,7 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
           <div style={{padding:"32px",textAlign:"center",color:"#94a3b8",fontSize:"13px"}}>{search?"검색 결과 없음":"등록된 환자가 없습니다."}</div>
         ):filtered.map(p=>{
           const total=EVAL_KEYS.reduce((s,k)=>s+(db.records[p.id]?.[k]?.length||0),0);
+          const latestSavedAt=getLatestSavedAt(p.id);
           const isSel=selectedPatient?.id===p.id;
           const isEditing=editPt?.id===p.id;
           return(
@@ -700,7 +732,10 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
               <div style={{minWidth:0}}>
                 <div style={{fontFamily:"monospace",color:"#2563eb",fontSize:"12px",marginBottom:"1px"}}>{p.id}</div>
                 <div style={{fontWeight:600,fontSize:"14px",color:"#1e293b"}}>{p.name}</div>
-                <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"1px"}}>{total}건의 기록</div>
+                <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"1px"}}>
+                  {total}건의 기록
+                  {latestSavedAt>0&&<span style={{marginLeft:"6px"}}>· 최근 {new Date(latestSavedAt).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})} {new Date(latestSavedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}</span>}
+                </div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:"6px",flexShrink:0}}>
                 {isSel&&!isEditing&&<div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#2563eb"}}/>}
@@ -1661,7 +1696,7 @@ function App(){
           {!isTablet&&mobileView==="content"&&patient?(
             <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{patient.id} {patient.name}</span>
           ):(
-            <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b"}}>환자 평가 관리 <span style={{fontSize:"12px",fontWeight:500,color:"#94a3b8"}}>v2.8</span></span>
+            <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b"}}>환자 평가 관리 <span style={{fontSize:"12px",fontWeight:500,color:"#94a3b8"}}>v2.10</span></span>
           )}
         </div>
       </div>
