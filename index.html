@@ -32,7 +32,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v3.26</title>
+  <title>환자 평가 관리 v3.28</title>
   <link rel="manifest" href="manifest.json" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -40,6 +40,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    :root { color-scheme: light only; }
     body { font-family: -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; background: #f4f7fb; color: #1e293b; overscroll-behavior: none; height: 100vh; height: -webkit-fill-available; height: 100dvh; }
     input, textarea, button, select { font-family: inherit; }
     input[type="text"], input[type="number"], input[type="date"], textarea { font-size: 16px !important; }
@@ -427,7 +428,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v3.26";
+const APP_VERSION = "v3.28";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -766,9 +767,8 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
                   <span style={{fontWeight:600,fontSize:"14px",color:"#1e293b"}}>{p.name}</span>
                   <span style={{fontSize:"11px",color:"#94a3b8"}}>{total}건</span>
                 </div>
-                <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"2px",display:"flex",gap:"8px",flexWrap:"wrap"}}>
+                <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"2px",display:"flex",flexDirection:"column",gap:"1px"}}>
                   {p.createdAt&&<span>최초생성일 {new Date(p.createdAt).toLocaleDateString("ko-KR",{year:"2-digit",month:"2-digit",day:"2-digit"})}</span>}
-                  {latestSavedAt>0&&p.createdAt&&<span style={{color:"#e2e8f0"}}>|</span>}
                   {latestSavedAt>0&&<span>최근수정 {new Date(latestSavedAt).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})} {new Date(latestSavedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}</span>}
                 </div>
               </div>
