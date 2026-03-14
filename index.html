@@ -11,10 +11,14 @@
         const saved = localStorage.getItem('app_file_version');
         if(saved && saved !== lastMod && lastMod){
           localStorage.setItem('app_file_version', lastMod);
+          // 캐시만 삭제, 로컬스토리지 데이터는 절대 건드리지 않음
           if('caches' in window) caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
           if('serviceWorker' in navigator)
             navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
-          window.location.reload(true);
+          // reload 전 데이터 백업 확인
+          const data = localStorage.getItem('pt_eval_data');
+          if(data) localStorage.setItem('pt_eval_data_backup', data);
+          window.location.reload();
         } else {
           if(lastMod) localStorage.setItem('app_file_version', lastMod);
         }
@@ -413,8 +417,36 @@ const EVAL_COLORS = {
   "FOG-Q":{ bg:"#fef3f2", border:"#f97316", text:"#7c2d12", accent:"#f97316" },
 };
 
-function loadData(){ try{ const r=localStorage.getItem("pt_eval_data"); if(r){ const d=JSON.parse(r); return{...d,templates:DEFAULT_TEMPLATES}; } }catch{} return{patients:[],records:{},templates:DEFAULT_TEMPLATES}; }
-function saveData(d){ localStorage.setItem("pt_eval_data",JSON.stringify(d)); }
+function loadData(){
+  try{
+    const r=localStorage.getItem("pt_eval_data");
+    if(r){
+      const d=JSON.parse(r);
+      // patients, records는 반드시 보존, templates만 DEFAULT로 병합
+      return{
+        patients: d.patients||[],
+        records: d.records||{},
+        templates: DEFAULT_TEMPLATES
+      };
+    }
+  }catch(e){
+    // 파싱 오류 시 백업 키에서 복구 시도
+    try{
+      const backup=localStorage.getItem("pt_eval_data_backup");
+      if(backup){
+        const d=JSON.parse(backup);
+        return{patients:d.patients||[],records:d.records||{},templates:DEFAULT_TEMPLATES};
+      }
+    }catch{}
+  }
+  return{patients:[],records:{},templates:DEFAULT_TEMPLATES};
+}
+function saveData(d){
+  const payload=JSON.stringify(d);
+  localStorage.setItem("pt_eval_data",payload);
+  // 백업 키에도 동시 저장 (복구용)
+  localStorage.setItem("pt_eval_data_backup",payload);
+}
 
 function useIsTablet(){
   const [v,setV]=useState(window.innerWidth>=768);
@@ -1190,9 +1222,8 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
   const evalFormSaveRef=React.useRef(null);   // EvalForm의 save 함수
   useEffect(()=>{setRv("eval-select");setEk(null);setEditRec(null);setTab("item");evalFormDirtyRef.current=false;},[patient?.id]);
 
-  // 뷰 전환 시 히스토리 push (모든 기기)
+  // 뷰 전환 - React state만으로 관리
   const navTo=(nextRv,opts={})=>{
-    history.pushState({level:"content",rv:nextRv},"");
     if(opts.ek!==undefined) setEk(opts.ek);
     if(opts.editRec!==undefined) setEditRec(opts.editRec);
     if(opts.tab!==undefined) setTab(opts.tab);
@@ -1293,7 +1324,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
       {rv==="eval-select"&&(
         <div style={{display:"flex",borderBottom:"1.5px solid #e2e8f0",background:"#fff",flexShrink:0}}>
           {[["item","항목별"],["date","날짜별"]].map(([t,label])=>(
-            <button key={t} onClick={()=>{history.pushState({level:"content",rv:"eval-select",tab:t},"");setTab(t);}}
+            <button key={t} onClick={()=>setTab(t)}
               style={{flex:1,padding:"10px 0",fontSize:"13px",fontWeight:tab===t?700:400,color:tab===t?"#2563eb":"#94a3b8",border:"none",borderBottom:tab===t?"2.5px solid #2563eb":"2.5px solid transparent",background:"none",cursor:"pointer",transition:"all 0.15s"}}>
               {label}
             </button>
@@ -1551,31 +1582,32 @@ function App(){
     }
   };
   useEffect(()=>{
-    // 항상 스택에 두 단계 유지: [base] [guard]
-    // guard가 pop되면 뒤로가기 감지 → 처리 후 guard 다시 push
+    // 단순 전략: guard 하나만 항상 유지
+    // 뒤로가기 발생 → guard가 pop됨 → onPop 실행 → 처리 후 guard 다시 push
     history.replaceState({level:"base"},"");
     history.pushState({level:"guard"},"");
 
-    const onPop=async(e)=>{
-      // guard가 사라졌다 = 뒤로가기 발생
+    const onPop=async()=>{
+      // 항상 guard를 즉시 복구 (종료 방지)
+      history.pushState({level:"guard"},"");
+
+      // ContentPanel 뒤로가기 처리 시도
       const handled = contentGoBackRef.current && await contentGoBackRef.current();
-      if(!handled){
-        if(mobileViewRef.current==="content"){
-          // 콘텐츠 패널 → 목록으로
-          setMobileView("list");
-          mobileViewRef.current="list";
-          history.pushState({level:"guard"},"");
-        } else {
-          // 최상위 → 종료 확인
-          history.pushState({level:"guard"},""); // 먼저 guard 복구
-          const exit = await useConfirm("앱을 종료하시겠습니까?");
-          if(exit){
-            history.go(-2); // base + guard 두 단계 뒤로
-          }
-        }
-      } else {
-        // ContentPanel이 처리 → guard 유지
-        history.pushState({level:"guard"},"");
+      if(handled) return;
+
+      // ContentPanel이 처리 못함
+      if(mobileViewRef.current==="content"){
+        // 모바일: 콘텐츠 → 목록
+        setMobileView("list");
+        mobileViewRef.current="list";
+        return;
+      }
+
+      // 최상위 → 종료 확인
+      const exit = await useConfirm("앱을 종료하시겠습니까?");
+      if(exit){
+        // guard + base 모두 제거 후 실제 종료
+        history.go(-2);
       }
     };
 
