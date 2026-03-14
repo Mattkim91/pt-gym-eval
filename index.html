@@ -32,7 +32,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v3.24</title>
+  <title>환자 평가 관리 v3.26</title>
   <link rel="manifest" href="manifest.json" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -427,7 +427,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v3.24";
+const APP_VERSION = "v3.26";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1580,27 +1580,30 @@ function MmtSelect({value, onChange}){
   const [open,setOpen]=React.useState(false);
   const btnRef=React.useRef(null);
   const portalId=React.useRef("mmt-portal-"+Math.random().toString(36).slice(2));
+  const posRef=React.useRef({top:0,left:0});
   const [pos,setPos]=React.useState({top:0,left:0});
+  const rafRef=React.useRef(null);
   const ts=React.useRef({startX:0,startY:0,moved:false,startedInPortal:false});
 
   const calcPos=()=>{
     if(!btnRef.current) return;
     const r=btnRef.current.getBoundingClientRect();
-    setPos({top:r.bottom+3, left:r.left+r.width/2});
+    const next={top:r.bottom+3, left:r.left+r.width/2};
+    // 실제로 바뀐 경우에만 setState (불필요한 리렌더 방지)
+    if(next.top!==posRef.current.top||next.left!==posRef.current.left){
+      posRef.current=next;
+      setPos(next);
+    }
   };
 
-  // 스크롤 시 위치 업데이트 - window + 모든 스크롤 컨테이너 감지
+  // 열려있는 동안 rAF 루프로 버튼 위치를 매 프레임 추적
+  // → scroll 이벤트 방식 대신 사용하면 iOS overflow 컨테이너 스크롤도 완벽 추적
   useEffect(()=>{
-    if(!open) return;
+    if(!open){ if(rafRef.current) cancelAnimationFrame(rafRef.current); return; }
     calcPos();
-    const onScroll=()=>{ requestAnimationFrame(calcPos); };
-    // capture:true로 모든 스크롤 이벤트 감지 (iOS overflow 컨테이너 포함)
-    window.addEventListener("scroll",onScroll,{passive:true,capture:true});
-    window.addEventListener("touchmove",onScroll,{passive:true});
-    return()=>{
-      window.removeEventListener("scroll",onScroll,{capture:true});
-      window.removeEventListener("touchmove",onScroll);
-    };
+    const loop=()=>{ calcPos(); rafRef.current=requestAnimationFrame(loop); };
+    rafRef.current=requestAnimationFrame(loop);
+    return()=>{ if(rafRef.current) cancelAnimationFrame(rafRef.current); };
   },[open]);
 
   useEffect(()=>{
@@ -1625,7 +1628,10 @@ function MmtSelect({value, onChange}){
       const dx=Math.abs(t.clientX-ts.current.startX);
       const dy=Math.abs(t.clientY-ts.current.startY);
       if(dx>5||dy>5) ts.current.moved=true;
-      if(ts.current.startedInPortal) e.preventDefault();
+      // 포털 내부: 수직 스크롤(dy>dx)이면 허용 → 드롭다운 자체 스크롤
+      //           수평이면 막음
+      // 포털 외부: 전혀 막지 않음 → 바깥 페이지 스크롤 자유롭게
+      if(ts.current.startedInPortal && dx>=dy) e.preventDefault();
     };
 
     const onTouchEnd=(e)=>{
