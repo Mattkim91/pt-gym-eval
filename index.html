@@ -17,7 +17,11 @@
             navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
           // reload 전 데이터 백업 확인
           const data = localStorage.getItem('pt_eval_data');
-          if(data) localStorage.setItem('pt_eval_data_backup', data);
+          if(data){
+            localStorage.setItem('pt_eval_backup_latest', data);
+            const today=new Date().toISOString().slice(0,10);
+            localStorage.setItem('pt_eval_backup_date', today);
+          }
           window.location.reload();
         } else {
           if(lastMod) localStorage.setItem('app_file_version', lastMod);
@@ -28,11 +32,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v2.6</title>
+  <title>환자 평가 관리 v2.8</title>
   <link rel="manifest" href="manifest.json" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     body { font-family: -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; background: #f4f7fb; color: #1e293b; overscroll-behavior: none; height: 100vh; height: -webkit-fill-available; height: 100dvh; }
@@ -422,7 +427,6 @@ function loadData(){
     const r=localStorage.getItem("pt_eval_data");
     if(r){
       const d=JSON.parse(r);
-      // patients, records는 반드시 보존, templates만 DEFAULT로 병합
       return{
         patients: d.patients||[],
         records: d.records||{},
@@ -430,22 +434,40 @@ function loadData(){
       };
     }
   }catch(e){
-    // 파싱 오류 시 백업 키에서 복구 시도
-    try{
-      const backup=localStorage.getItem("pt_eval_data_backup");
-      if(backup){
-        const d=JSON.parse(backup);
-        return{patients:d.patients||[],records:d.records||{},templates:DEFAULT_TEMPLATES};
-      }
-    }catch{}
+    // 파싱 오류 시 백업에서 복구 시도 (최신 → 어제 → 그저께 순)
+    const keys=["pt_eval_backup_latest","pt_eval_backup_prev"];
+    for(const k of keys){
+      try{
+        const b=localStorage.getItem(k);
+        if(b){ const d=JSON.parse(b); return{patients:d.patients||[],records:d.records||{},templates:DEFAULT_TEMPLATES}; }
+      }catch{}
+    }
   }
   return{patients:[],records:{},templates:DEFAULT_TEMPLATES};
 }
+
 function saveData(d){
   const payload=JSON.stringify(d);
   localStorage.setItem("pt_eval_data",payload);
-  // 백업 키에도 동시 저장 (복구용)
-  localStorage.setItem("pt_eval_data_backup",payload);
+  // 저장 시마다 최신 백업 갱신
+  localStorage.setItem("pt_eval_backup_latest",payload);
+}
+
+function autoBackupOnOpen(){
+  // 하루 1회만 실행 (오늘 날짜 체크)
+  const today=new Date().toISOString().slice(0,10);
+  const lastBackupDate=localStorage.getItem("pt_eval_backup_date");
+  if(lastBackupDate===today) return;
+  try{
+    const data=localStorage.getItem("pt_eval_data");
+    if(!data) return;
+    // 기존 latest → prev로 이동 (하루 전 백업 보존)
+    const latest=localStorage.getItem("pt_eval_backup_latest");
+    if(latest) localStorage.setItem("pt_eval_backup_prev",latest);
+    // 오늘 데이터 latest에 저장
+    localStorage.setItem("pt_eval_backup_latest",data);
+    localStorage.setItem("pt_eval_backup_date",today);
+  }catch{}
 }
 
 function useIsTablet(){
@@ -875,14 +897,25 @@ function DateSummaryView({db,persist,patient,templates,onEditForm}){
   const shareDate=async(d,items)=>{
     const html=buildPrintHtml(patient,d,items,templates);
     const blob=new Blob([html],{type:"text/html"});
-    const file=new File([blob],`${patient.name}_${d}_평가기록.html`,{type:"text/html"});
+    const fname=`${patient.name}_${d}_평가기록.html`;
+    const file=new File([blob],fname,{type:"text/html"});
+
+    // iOS/안드로이드: 공유 시트 → "PDF로 저장" 또는 "파일에 저장" 선택 가능
     if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
-      try{ await navigator.share({title:`${patient.name} ${d} 평가기록`,files:[file]}); return; }catch(e){ if(e.name==="AbortError") return; }
+      try{
+        await navigator.share({
+          title:`${patient.name} ${d} 평가기록`,
+          text:"📄 공유 후 \"PDF로 저장\"을 선택하면 PDF로 저장됩니다.",
+          files:[file]
+        });
+        return;
+      }catch(e){ if(e.name==="AbortError") return; }
     }
-    // fallback: 다운로드
+
+    // fallback: 다운로드 후 안내
     const a=document.createElement("a");
     a.href=URL.createObjectURL(blob);
-    a.download=`${patient.name}_${d}_평가기록.html`;
+    a.download=fname;
     document.body.appendChild(a);a.click();
     setTimeout(()=>{URL.revokeObjectURL(a.href);document.body.removeChild(a);},1000);
   };
@@ -934,8 +967,9 @@ function DateSummaryView({db,persist,patient,templates,onEditForm}){
               </div>
               {/* 공유 버튼 - 항상 우측 고정 */}
               <button onClick={e=>{e.stopPropagation();shareDate(d,items);}}
-                style={{flexShrink:0,padding:"0 14px",background:"#f8fafc",border:"none",borderLeft:"1.5px solid #e2e8f0",cursor:"pointer",color:"#475569",display:"flex",alignItems:"center",gap:"5px",fontSize:"12px",fontWeight:600}}>
-                <IcoShare/> 공유
+                style={{flexShrink:0,padding:"0 14px",background:"#f8fafc",border:"none",borderLeft:"1.5px solid #e2e8f0",cursor:"pointer",color:"#475569",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"2px",fontSize:"12px",fontWeight:600}}>
+                <div style={{display:"flex",alignItems:"center",gap:"5px"}}><IcoShare/> 공유</div>
+                <div style={{fontSize:"9px",color:"#94a3b8",fontWeight:400}}>PDF저장 가능</div>
               </button>
             </div>
 
@@ -1563,7 +1597,7 @@ function ConfirmDialog({msg, onYes, onNo}){
 }
 
 function App(){
-  const [db,setDb]=useState(()=>loadData());
+  const [db,setDb]=useState(()=>{autoBackupOnOpen();return loadData();});
   const [patient,setPatient]=useState(null);
   const [mobileView,setMobileView]=useState("list");
   const isTablet=useIsTablet();
@@ -1627,7 +1661,7 @@ function App(){
           {!isTablet&&mobileView==="content"&&patient?(
             <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{patient.id} {patient.name}</span>
           ):(
-            <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b"}}>환자 평가 관리 <span style={{fontSize:"12px",fontWeight:500,color:"#94a3b8"}}>v2.6</span></span>
+            <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b"}}>환자 평가 관리 <span style={{fontSize:"12px",fontWeight:500,color:"#94a3b8"}}>v2.8</span></span>
           )}
         </div>
       </div>
