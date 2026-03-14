@@ -32,7 +32,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v3.12</title>
+  <title>환자 평가 관리 v3.16</title>
   <link rel="manifest" href="manifest.json" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -355,7 +355,7 @@ const DEFAULT_TEMPLATES = {
     label: "10mWT (10m 보행 검사)",
     fields: [
       { id:"date", label:"검사일", type:"date" },
-      { id:"test_failure", label:"Test Failure", type:"toggle", options:["해당 없음","Test failure"] },
+      { id:"test_failure", label:"Test Failure", type:"toggle", options:["Test failure"] },
       { id:"speed_type", label:"검사 종류", type:"toggle", options:["Maximum speed","Comfortable speed"] },
       { id:"trial1", label:"시행 1 (초)", type:"number", placeholder:"" },
       { id:"steps1", label:"스텝 수 - 시행 1", type:"number", placeholder:"", inputMode:"numeric" },
@@ -427,7 +427,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v3.12";
+const APP_VERSION = "v3.16";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1846,7 +1846,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
       else if(f.type==="fogq_full") init[f.id]=FOGQ_ITEMS.map(()=>null);
       else if(f.type==="rom_table") init[f.id]={};
       else if(f.type==="date") init[f.id]=todayStr;
-      else if(f.type==="toggle") init[f.id]=f.options?.[0]||"";
+      else if(f.type==="toggle") init[f.id]=f.id==="test_failure"?"":f.options?.[0]||"";
       else init[f.id]="";
     });
     return init;
@@ -1909,7 +1909,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
   },[fd.trial1,fd.trial2,fd.trial3]);
 
   const isTestFailure = fd["test_failure"] === "Test failure";
-  const FAILURE_DISABLED = ["speed_type","trial1","trial2","trial3","avg","speed","assistive"];
+  const FAILURE_DISABLED = ["speed_type","trial1","trial2","trial3","avg","speed","assistive","steps1","steps2","steps3"];
 
   const handleSave=()=>{
     const final={...fd};
@@ -2276,7 +2276,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
           return(
             <div key={field.id} style={S.fieldRow}>
               <label style={S.fieldLabel}>{field.label} <span style={{color:"#3b9ede",fontSize:"10px",fontWeight:600,marginLeft:"4px"}}>● 자동계산</span></label>
-              <input style={S.inputAuto} type="text" readOnly value={fd[field.id]||""} placeholder={field.placeholder}/>
+              <input style={S.inputAuto} type="text" readOnly value={isTestFailure?"—":fd[field.id]||""} placeholder={field.placeholder}/>
             </div>
           );
         }
@@ -2331,17 +2331,26 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
             <label style={S.fieldLabel}>{field.label}</label>
             {field.type==="toggle"?(
               <div style={{display:"flex",gap:"7px",flexWrap:"wrap"}}>
-                {field.options.map(opt=>{
-                  const on=fd[field.id]===opt;
-                  const isFailureOpt = field.id==="test_failure" && opt==="Test failure";
-                  const activeColor = isFailureOpt ? "#ef4444" : col.accent;
-                  return <button key={opt} onClick={()=>setF(field.id,opt)} style={{border:`1.5px solid ${on?activeColor:"#cbd5e1"}`,borderRadius:"9px",padding:"8px 16px",fontSize:"14px",cursor:"pointer",background:on?activeColor:"#fff",color:on?"#fff":"#475569",fontWeight:on?700:400}}>{opt}</button>;
-                })}
+                {field.id==="test_failure"?(
+                  <button onClick={()=>setF(field.id,fd[field.id]==="Test failure"?"":"Test failure")}
+                    style={{border:`1.5px solid ${fd[field.id]==="Test failure"?"#ef4444":"#cbd5e1"}`,borderRadius:"9px",padding:"8px 16px",fontSize:"14px",cursor:"pointer",background:fd[field.id]==="Test failure"?"#ef4444":"#fff",color:fd[field.id]==="Test failure"?"#fff":"#475569",fontWeight:fd[field.id]==="Test failure"?700:400}}>
+                    Test Failure
+                  </button>
+                ):(
+                  field.options.map(opt=>{
+                    const on=fd[field.id]===opt;
+                    return <button key={opt} onClick={()=>setF(field.id,opt)} style={{border:`1.5px solid ${on?col.accent:"#cbd5e1"}`,borderRadius:"9px",padding:"8px 16px",fontSize:"14px",cursor:"pointer",background:on?col.accent:"#fff",color:on?"#fff":"#475569",fontWeight:on?700:400}}>{opt}</button>;
+                  })
+                )}
               </div>
             ):field.type==="textarea"?(
               <textarea style={S.textarea} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
             ):(
-              <input style={{...S.input,borderColor:field.type==="date"&&!fd[field.id]?"#f87171":undefined}} type={field.type==="date"?"date":"text"} inputMode={field.inputMode||(field.type==="number"?"decimal":undefined)} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)} required={field.type==="date"}/>
+              (field.id==="steps1"||field.id==="steps2"||field.id==="steps3")?(
+                <input style={{border:"1.5px solid #e2e8f0",borderRadius:"8px",padding:"10px 8px",outline:"none",color:"#1e293b",width:"80px",fontSize:"16px",textAlign:"center"}} inputMode="numeric" placeholder="" value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
+              ):(
+                <input style={{...S.input,borderColor:field.type==="date"&&!fd[field.id]?"#f87171":field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"#60a5fa":undefined, borderWidth:field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"2px":undefined}} type={field.type==="date"?"date":"text"} inputMode={field.inputMode||(field.type==="number"?"decimal":undefined)} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)} required={field.type==="date"}/>
+              )
             )}
           </div>
         );
