@@ -1,0 +1,2021 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="환자평가" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>환자 평가 관리</title>
+  <link rel="manifest" href="manifest.json" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; background: #f4f7fb; color: #1e293b; overscroll-behavior: none; height: 100vh; height: -webkit-fill-available; height: 100dvh; }
+    input, textarea, button, select { font-family: inherit; }
+    input[type="text"], input[type="number"], input[type="date"], textarea { font-size: 16px !important; }
+    .layout-shell { display: flex; flex-direction: column; height: 100vh; height: -webkit-fill-available; height: 100dvh; }
+    .topbar { position: sticky; top: 0; z-index: 100; background: #fff; border-bottom: 1.5px solid #e2e8f0; padding: 0 16px; height: 52px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.05); flex-shrink: 0; }
+    .main-area { flex: 1; overflow: hidden; display: flex; }
+    .panel-left  { width: 100%; height: 100%; overflow-y: auto; }
+    .panel-right { display: none; }
+    @media (min-width: 768px) {
+      .panel-left  { width: 300px; min-width: 260px; max-width: 320px; border-right: 1.5px solid #e2e8f0; background: #fff; flex-shrink: 0; }
+      .panel-right { display: block; flex: 1; overflow: hidden; background: #f4f7fb; }
+    }
+    .panel-scroll { height: 100%; overflow-y: auto; }
+    .pad-sm { padding: 14px 12px 40px; }
+    .pt-row { cursor: pointer; transition: background 0.1s; }
+    .pt-row:hover { background: #f0f7ff; }
+    .mmt-sel { border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 9px 4px; width: 82px; outline: none; color: #1e293b; background: #fff; cursor: pointer; text-align: center; font-size: 15px; }
+    .bbs-opt { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: 8px; border: 1.5px solid #e2e8f0; cursor: pointer; margin-bottom: 5px; background: #fff; color: #334155; }
+    .bbs-opt.on { border-color: #c4b5fd; background: #fff; color: #334155; }
+    .bbs-badge { min-width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0; margin-top: 1px; background: #fff; color: #94a3b8; border: 1.5px solid #cbd5e1; }
+    .bbs-opt.on .bbs-badge { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const MMT_OPTIONS = ["","5","4","3","3-","2+","2","2-","1","0"];
+
+const ROM_SECTIONS = [
+  { title:"Shoulder", rows:["Flexion (0-180)","Extension (0-60)","Abduction (0-180)","Internal rotation (0-90)","External rotation (0-90)"] },
+  { title:"Elbow and Forearm", rows:["Flexion contracture (0-150)","Flexion (0-150)","Supination (0-80)","Pronation (0-80)"] },
+  { title:"Wrist", rows:["Flexion (0-80)","Extension (0-70)","Ulnar deviation (0-30)","Radial deviation (0-20)"] },
+  { title:"Hip", rows:["Flexion (0-120)","Extension (0-30)","Abduction (0-45)","Adduction (0-30)","Internal rotation (0-35)","External rotation (0-60)"] },
+  { title:"Knee", rows:["Flexion contracture (0-135)","Flexion (0-135)"] },
+  { title:"Ankle and Foot", rows:["Plantar flexion contracture (0-50)","Plantar flexion (0-50)","Dorsiflexion (0-20)","Inversion (0-35)","Eversion (0-20)"] },
+];
+
+const BBS_ITEMS = [
+  { label:"1. 앉은 자세에서 일어나기 (Sitting to Standing)", opts:[
+    [4,"손의 사용 없이 일어 설 수 있으며, 독립적으로 안정성을 갖고 서 있을 수 있다"],
+    [3,"손을 사용하여 스스로 일어설 수 있다"],
+    [2,"몇 번의 시도 후에 손을 사용하여 일어설 수 있다"],
+    [1,"일어서거나 안정성 있게 서 있기 위하여 최소한(minimal)의 도움이 필요하다"],
+    [0,"일어 서기 위해 중증도(moderate) 또는 최대한(maximal)의 도움이 필요하다"],
+  ]},
+  { label:"2. 지지(보조) 없이 서 있기 (Standing Unsupported)", opts:[
+    [4,"2분 동안 안정감 있게 서 있을 수 있다"],
+    [3,"감독 하에 2분 동안 서 있을 수 있다"],
+    [2,"지지 없이 30초 동안 서 있을 수 있다"],
+    [1,"몇 번의 시도 후, 지지 없이 30초 동안 서 있을 수 있다"],
+    [0,"지지 없이는 30초 동안 서 있을 수 없다"],
+  ]},
+  { label:"3. 등받이 지지 없이 앉기 (Sitting Unsupported)", opts:[
+    [4,"2분 동안 안정성 있게 앉아 있을 수 있다"],
+    [3,"감독 하에 2분 동안 앉아 있을 수 있다"],
+    [2,"30초 동안 앉아 있을 수 있다"],
+    [1,"10초 동안 앉아 있을 수 있다"],
+    [0,"지지 없이 10초 동안 앉아 있을 수 없다"],
+  ]},
+  { label:"4. 서있는 자세에서 앉기 (Standing to Sitting)", opts:[
+    [4,"최소한(minimal)으로 손을 사용하여 앉을 수 있다"],
+    [3,"손을 사용하여 몸을 잘 조절하여 앉는다"],
+    [2,"앉는 것을 조절하기 위하여 양발을 의자 뒤쪽으로 옮겨 놓는다"],
+    [1,"스스로 앉을 수는 있으나, 몸을 잘 조절하지 못한다"],
+    [0,"앉기 위해 보조가 필요하다"],
+  ]},
+  { label:"5. 이동 (Transfer)", opts:[
+    [4,"최소한으로 손을 사용하여 안정적으로 이동할 수 있다"],
+    [3,"손에 의지하여 안정성 있게 이동할 수 있다"],
+    [2,"감독 또는 언어적인 지시(verbal cue)에 의해 이동할 수 있다"],
+    [1,"이동하기 위해 한명의 보조자가 필요하다"],
+    [0,"이동하기 위해 두 명의 보조자가 필요하다"],
+  ]},
+  { label:"6. 눈 감고 지지 없이 서 있기 (Standing Unsupported with Eyes Closed)", opts:[
+    [4,"10초 동안 안정적으로 서 있을 수 있다"],
+    [3,"감독 하에 10초 동안 서 있을 수 있다"],
+    [2,"3초 동안 눈을 감고 서 있을 수 있다"],
+    [1,"3초동안 눈을 감은채 유지할 수 없지만 안정적이다"],
+    [0,"넘어질 위험이 있어 도움이 필요하다"],
+  ]},
+  { label:"7. 두발 모으고 서 있기 (Standing Unsupported with Feet Together)", opts:[
+    [4,"스스로 두 발을 모으고 안정적으로 1분 동안 서 있을 수 있다"],
+    [3,"스스로 두 발을 모으고 감독 하에 1분 동안 서 있을 수 있다"],
+    [2,"스스로 두 발을 모으고 30초 동안 유지할 수 있다"],
+    [1,"두 발을 모으고 15초 동안 서 있을 수 있으나 도움이 필요하다"],
+    [0,"자세를 취하기 위해 도움이 필요하며, 15초 동안 서 있을 수 없다"],
+  ]},
+  { label:"8. 서있는 자세에서 팔 앞으로 뻗기 (Reaching Forward with Outstretched Arm)", opts:[
+    [4,"25cm이상 자신 있게 뻗을 수 있다"],
+    [3,"12.5cm 이상 안전하게 뻗을 수 있다"],
+    [2,"5cm 이상 안전하게 뻗을 수 있다"],
+    [1,"앞으로 뻗을 수 있으나 감독이 필요하다"],
+    [0,"앞으로 뻗기 동작을 시도하는 도중 균형을 잃거나 보조가 필요하다"],
+  ]},
+  { label:"9. 서있는 자세에서 바닥에 있는 물체 집어 올리기 (Retrieving Object from Floor)", opts:[
+    [4,"안전하고 쉽게 신발을 집어 올릴 수 있다"],
+    [3,"감독 하에 신발을 집어 올릴 수 있다"],
+    [2,"집어 올릴 수는 없으나 균형을 유지하여 신발 근처 2~5cm 까지 이른다"],
+    [1,"신발을 집어 올릴 수 없으며, 수행하는 동안 감독이 필요하다"],
+    [0,"집어 올릴 수 없으며, 수행하는 동안 균형을 잃는다"],
+  ]},
+  { label:"10. 서있는 자세에서 뒤에 있는 물체 보기 (Turning to Look Behind)", opts:[
+    [4,"양쪽으로 회전하여 뒤에 있는 물체를 잘 볼 수 있으며, 체중이동이 잘 된다"],
+    [3,"오직 한쪽 뒤에 있는 물체를 볼 수 있고 체중이동도 조금 감소함을 보인다"],
+    [2,"옆으로만 회전할 수 있으나 균형은 잘 유지한다"],
+    [1,"회전할 때 감독이 필요하다"],
+    [0,"동작 수행 시 균형을 잃거나 넘어지는 것을 방지하기 위해 보조가 필요하다"],
+  ]},
+  { label:"11. 360도 회전하기 (Turning 360 Degrees)", opts:[
+    [4,"4초 또는 그 안에 양쪽 방향으로 360도 회전할 수 있다"],
+    [3,"4초 또는 그 안에 오직 한 방향으로 360도 회전할 수 있다"],
+    [2,"느리지만 안전하게 360도 회전할 수 있다"],
+    [1,"동작 수행 시 감독 또는 언어적인 지시가 필요하다"],
+    [0,"회전 하는 동안 보조가 필요하다"],
+  ]},
+  { label:"12. 발판위에 교대로 발 바꾸기 (Placing Alternate Foot on Stool)", opts:[
+    [4,"스스로 서서 안전하게 20초 내에 발을 8번 바꿀 수 있다"],
+    [3,"스스로 서서 20초를 넘겨서 8번을 완전히 바꿀 수 있다"],
+    [2,"보조나 감독 없이 4번 바꿀 수 있다"],
+    [1,"최소한의 도움으로 2번 바꿀 수 있다"],
+    [0,"넘어지는 것을 방지하기 위해 보조가 필요하거나 동작을 수행할 수 없다"],
+  ]},
+  { label:"13. 한발 앞으로 내밀어 지지하기 (Standing with One Foot in Front)", opts:[
+    [4,"30초 동안 스스로 발을 직렬로 놓고 유지할 수 있다"],
+    [3,"30초 동안 스스로 다른 쪽 발 앞에 발을 내딛고 유지할 수 있다"],
+    [2,"발을 조금 내딛고 30초 동안 유지할 수 있다"],
+    [1,"발을 내딛기 위해 도움이 필요하나 15초 동안 유지할 수 있다"],
+    [0,"서 있는 동안 또는 내딛는 동안 균형을 잃는다"],
+  ]},
+  { label:"14. 한 발로 서있기 (Standing on One Leg)", opts:[
+    [4,"스스로 한발로 10초 이상 서있을 수 있다"],
+    [3,"스스로 한발로 5-10초 동안 서 있을 수 있다"],
+    [2,"스스로 한발로 3초 동안 서 있을 수 있다"],
+    [1,"스스로 서 있을 수는 있으나 3초 정도를 유지할 수 없다"],
+    [0,"동작을 수행할 수 없거나 넘어지는 것을 방지하기 위해 보조가 필요하다"],
+  ]},
+];
+
+const FOGQ_ITEMS = [
+  { label:"1. 가장 증상이 심할 때, 걷는 상태는 어떤가요?",
+    opts:[
+      [0,"정상적으로 걷는다."],
+      [1,"거의 정상적으로 걷지만 약간 느리다."],
+      [2,"느리게 걷지만 혼자서 걸을 수 있다."],
+      [3,"보행 보조 도구나 다른 사람의 도움이 필요하다."],
+      [4,"걷지 못한다."],
+    ]},
+  { label:"2. 보행 문제로 인해 일상생활이나, 독립적인 생활에 영향을 받나요?",
+    opts:[
+      [0,"전혀 없다."],
+      [1,"약간 있다."],
+      [2,"어느정도 있다."],
+      [3,"심하다."],
+      [4,"걷지 못한다."],
+    ]},
+  { label:"3. 걷거나, 방향을 바꿀 때, 또는 걸음을 시작할 때, 발이 바닥에 붙은 것처럼 느껴질 때(보행 동결)가 있나요?",
+    opts:[
+      [0,"전혀 없다."],
+      [1,"아주 드물게 있다. (한 달에 한 번 정도)"],
+      [2,"드물게 있다. (일주일에 한 번 정도)"],
+      [3,"자주 있다. (하루에 한 번 정도)"],
+      [4,"항상 있다. (걸을 때마다)"],
+    ]},
+  { label:"4. 보행동결 현상이 나타날 때, 가장 오랫동안 지속된 시간은 얼마인가요?",
+    opts:[
+      [0,"경험한 적 없다."],
+      [1,"1-2초"],
+      [2,"3-10초"],
+      [3,"11-30초"],
+      [4,"30초 이상 걷지 못했다."],
+    ]},
+  { label:"5. 걷기 시작할 때(첫발을 내딛을 때) 보행 동결이 지속된 시간은 보통 얼마나 되나요?",
+    opts:[
+      [0,"없다."],
+      [1,"걸음을 시작하는데 1초 이상 걸린다."],
+      [2,"걸음을 시작하는데 3초 이상 걸린다."],
+      [3,"걸음을 시작하는데 10초 이상 걸린다."],
+      [4,"걸음을 시작하는데 30초 이상 걸린다."],
+    ]},
+  { label:"6. 방향을 바꿀 때 동결이 지속된 시간은 보통 얼마나 되나요?",
+    opts:[
+      [0,"없다."],
+      [1,"1-2초 후 다시 움직인다."],
+      [2,"3-10초 후 다시 움직인다."],
+      [3,"11-30초 후 다시 움직인다."],
+      [4,"30초 이상 움직이지 못한다."],
+    ]},
+];
+
+
+const FGA_ITEMS = [
+  { label:"1. 평지 걷기",
+    instruction:"평상 시 보행 속도로 걸어보시오 (6m)",
+    opts:[
+      [3,"정상 - 보조도구 없이 적절한 속도로 균형 문제를 보이지 않으며 정상보행패턴으로 30.48cm 너비에서 15.24cm 이상 벗어나지 않으며 5.5초 이하로 걷는다."],
+      [2,"경미한 손상 - 보조도구를 사용하며 약간 느린 속도로, 30.48cm 너비에서 15.24-25.4cm를 벗어나지 않으며 5.5초 초과 7초 이하로 걷는다."],
+      [1,"중등도 손상 - 느리고 비정상적 패턴으로 걸으며 균형이 결여되어있거나 30.48cm 너비에서 25.4-38.1cm를 벗어나며 7초를 초과하여 걷는다."],
+      [0,"중증도 손상 - 보조 없이 6m를 걷지 못하며 심각한 균형결여 혹은 30.48cm 너비에서 38.1cm 이상 벗어나거나 벽 등을 짚는다."],
+    ]},
+  { label:"2. 보행 속도 바꾸며 걷기",
+    instruction:"평상시 속도로 걷다가(1.5m) '빠르게'라고 지시하면 최대한 빨리 걷고(1.5m) 다시 '느리게'라고 지시하면 최대한 천천히 걸어오시오(1.5m)",
+    opts:[
+      [3,"정상 - 균형을 유지하고 부드럽게 속도를 변환할 수 있다. 정상 속도, 빠른 속도, 느린 속도 사이 변화가 분명하게 보이며 30.48cm 너비에서 15.24cm 이상 벗어나지 않는다."],
+      [2,"경미한 손상 - 속도를 변화 할 수 있으나 30.48cm 너비에서 15.24-25.4cm의 벗어남을 보이거나 너비 벗어남은 없으나 속도변화를 크게 할 수 없거나 보조도구를 사용한다."],
+      [1,"중등도 손상 - 약간의 속도 변환만 보이거나 30.48cm 너비에서 25.4-38.1cm 의 벗어남을 보이거나 속도 변화 시 균형을 잃었다가 다시 회복하여 걷기를 지속한다."],
+      [0,"중증도 손상 - 속도 변화를 할 수 없거나 30.48cm 너비에서 38.1cm를 벗어나거나 균형을 잃고 벽 등을 짚는다."],
+    ]},
+  { label:"3. 수평으로 고개 돌리며 걷기",
+    instruction:"평상 시 속도로 걷다가 3발자국 후 오른쪽으로 고개를 돌리고 3걸음을 걷고 왼쪽으로 고개를 돌려 3걸음을 걷는 것을 2번 반복 하시오.",
+    opts:[
+      [3,"정상 - 보행의 변화 없이 부드럽게 고개를 돌리며 30.48cm 너비에서 15.24cm 이상 벗어나지 않는다."],
+      [2,"경미한 손상 - 약간의 속도 변화를 보이며 고개를 돌리고 30.48cm 너비에서 15.24-25.4cm의 벗어남을 보이거나 보조 도구를 사용한다."],
+      [1,"중등도 손상 - 고개를 돌릴 때 보행 속도의 변화를 보이며 느려지고 30.48cm 너비에서 25.4-38.1cm 벗어남을 보이지만 다시 회복하여 걷는다."],
+      [0,"중증도 손상 - 30.48cm 너비에서 38.1cm 이상 벗어나거나 균형을 잃거나 벽 등을 짚는 등 심한 보행의 제한을 보인다."],
+    ]},
+  { label:"4. 수직으로 고개를 돌리며 걷기",
+    instruction:"평상 시 속도로 걷다가 3발자국 후 위로 고개를 들고 3걸음을 걷고 아래로 고개를 숙여 3걸음을 걷는 것을 2번 반복 하시오.",
+    opts:[
+      [3,"정상 - 고개를 돌리는 동안 보행의 변화가 없고 30.48cm 너비에서 15.24cm이상 벗어나지 않는다."],
+      [2,"경미한 손상 - 과제를 수행하지만 보행속도에 약간의 변화가 있으며 30.48cm 너비에서 15.24-25.4cm를 벗어나며 보조 도구를 사용한다."],
+      [1,"중등도 손상 - 고개를 돌릴 때 보행 속도의 변화를 보이며 느려지고 30.48cm 너비에서 25.4-38.1cm를 벗어나지만 다시 회복하여 걷는다."],
+      [0,"중증도 손상 - 30.48cm 너비에서 38.1cm 이상 벗어나거나 균형을 잃거나 벽 등을 짚는 등 심한 보행의 제한을 보인다."],
+    ]},
+  { label:"5. 보행과 축 회전",
+    instruction:"평상시 보행속도로 걸으시오. '돌아서 멈추시오'라고 말할 때 할 수 있는 가능한 빠른 속도로 돌고 멈추시오.",
+    opts:[
+      [3,"정상 - 축 회전 시 안전하게 돌고 3초 이내에 균형을 잃지 않고 멈춘다."],
+      [2,"경미한 손상 - 축 회전 시 안전하게 돌지만 3초 이상 걸려서 멈춘 경우, 또는 3초 이내에 축 회전을 하지만 약간의 균형을 잃거나 균형을 잡기위해 약간의 걸음이 필요하다."],
+      [1,"중등도 손상 - 천천히 돌며 구두지시가 필요한 경우, 또는 회전과 정지 이후에 균형을 잡기위해 다수의 걸음이 필요하다."],
+      [0,"중증도 손상 - 안전하게 돌 수 없는 경우, 돌고 멈춤에 있어 도움이 필요하다."],
+    ]},
+  { label:"6. 장애물 넘기",
+    instruction:"평상 시 속도로 걷다가 상자를 넘고 지속해서 걸으시오.",
+    opts:[
+      [3,"정상 - 2개의 신발상자(22.86cm)를 보행속도 변화 없이 넘을 수 있으며, 균형에 문제가 없다."],
+      [2,"경미한 손상 - 1개의 신발상자(11.43cm)를 보행속도 변화 없이 넘을 수 있으며 균형에 문제가 없다."],
+      [1,"중등도 손상 - 1개의 신발상자(11.43cm)를 넘을 수 있으나 안전하게 넘기 위해 속도를 낮춰야 하며 언어적 지시가 필요할 수 있다."],
+      [0,"중증도 손상 - 보조 없이 수행할 수 없다."],
+    ]},
+  { label:"7. 좁은 기저면으로 걷기",
+    instruction:"가슴에 팔짱을 끼고 걸으시오. 발은 발꿈치에서 뒤꿈치까지 일자로 해서 3.6m를 걸으시오. 발자국 수는 일직선으로 해서 10발자국을 걸으시오.",
+    opts:[
+      [3,"정상 - 어려움 없이 10발자국을 갈 수 있다."],
+      [2,"경미한 손상 - 7~9발자국 걷는다."],
+      [1,"중등도 손상 - 4~7발자국 걷는다."],
+      [0,"중증도 손상 - 4발자국보다 적게 걷거나 또는 도움 없이는 실행하기 힘들다."],
+    ]},
+  { label:"8. 눈감고 걷기",
+    instruction:"보통 속도로 출발점에서부터 6m지점까지 눈을 감고 걸으시오.",
+    opts:[
+      [3,"정상 - 보조도구 없이 적절한 속도로 균형 문제를 보이지 않으며 정상보행패턴으로 30.48cm 너비에서 15.24cm 이상 벗어나지 않으며 7초 이하로 걷는다."],
+      [2,"경미한 손상 - 보조도구를 사용하며 약간 느린 속도로, 30.48cm 너비에서 15.24-25.4cm를 벗어나지 않으며 7초 초과 9초 이하로 걷는다."],
+      [1,"중등도 손상 - 느리고 비정상적 패턴으로 걸으며 균형이 결여되어있거나 30.48cm 너비에서 25.4-38.1cm를 벗어나며 9초를 초과하여 걷는다."],
+      [0,"중증도 손상 - 보조 없이 6m를 걷지 못하며 심각한 균형결여 혹은 30.48cm 너비에서 38.1cm 이상 벗어나거나 과제를 수행 할 수 없다."],
+    ]},
+  { label:"9. 뒤로 걷기",
+    instruction:"멈추라고 할 때까지 뒤로 걸으시오.",
+    opts:[
+      [3,"정상 - 보조도구 없이 적절한 속도로 균형 문제를 보이지 않으며 정상보행패턴으로 30.48cm 너비에서 15.24cm 이상 벗어나지 않는다."],
+      [2,"경미한 손상 - 보조도구를 사용하며 약간 느린 속도로, 30.48cm 너비에서 15.24-25.4cm를 벗어난다."],
+      [1,"중등도 손상 - 느리고 비정상적 패턴으로 걸으며 균형이 결여되어있거나 30.48cm 너비에서 25.4-38.1cm를 벗어난다."],
+      [0,"중증도 손상 - 보조 없이 6m를 걷지 못하며 심각한 균형결여 혹은 30.48cm 너비에서 38.1cm 이상 벗어나거나 과제를 수행 할 수 없다."],
+    ]},
+  { label:"10. 계단 오르내리기",
+    instruction:"평상시대로 올라가시오.(필요하다면 옆에 있는 레일을 잡고 가도된다) 다 오르면 다시 내려오시오.",
+    opts:[
+      [3,"정상 - 레일을 잡지 않고 한 계단씩 발을 원활히 바꾸며 계단을 오르내린다."],
+      [2,"경미한 손상 - 한 계단씩 발을 원활히 바꾸며 계단을 오르내리며 레일을 잡아야 한다."],
+      [1,"중등도 손상 - 레일을 잡아야만 하며, 한 계단씩 발을 원활히 바꾸며 계단을 오르내리지 못하며, 두 걸음에 한 계단 씩 레일을 사용해야 한다."],
+      [0,"중증도 손상 - 안전하게 수행하지 못한다."],
+    ]},
+];
+
+
+const MMT_SECTIONS = [
+  { group:"Upper extremities", sections:[
+    { title:"Shoulder", rows:["Flexion","Extension","Abduction"] },
+    { title:"Elbow",    rows:["Flexion","Extension"] },
+    { title:"Wrist",    rows:["Flexion","Extension"] },
+    { title:"Finger",   rows:["Flexion","Extension"] },
+  ]},
+  { group:"Lower extremities", sections:[
+    { title:"Hip",   rows:["Flexion","Extension"] },
+    { title:"Knee",  rows:["Flexion","Extension"] },
+    { title:"Ankle", rows:["Plantarflexion","Dorsiflexion"] },
+    { title:"Toe",   rows:["Flexion","Extension"] },
+  ]},
+];
+
+const DEFAULT_TEMPLATES = {
+  FAC: {
+    label: "FAC (기능적 보행 분류)",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"fac_select", label:"단계 선택", type:"fac_select", linkedTo:"score",
+        rows:[
+          ["0","P/B만 가능함.\nP/B 밖에서는 두 사람의 도움이 필요"],
+          ["1","평평한 곳에서 걷는 동안 항상 1인의 부축이 필요\n(뒤에서 가슴을 앉는 등)\ncontinuous body weight support"],
+          ["2","평평한 곳에서 보행 시 낙상방지를 위해 1인 이하의 도움이 필요.\nManual contact는 균형과 coordination 유지를 위해 continuous 할 수도 있고 intermittent 할 수도 있음.\nintermittent or continuous light touch"],
+          ["3","평평한 지면은 혼자 걸을 수 있으나 인지나 신체적 이유로 안전을 위해서 신체적인 접촉은 없이 1인 이하의 guarding이나 verbal cuing 이 필요함."],
+          ["4","평평한 지면은 혼자 걸을 수 있으나 평평하지 않은 지면은 supervision이나 physical assistance가 필요"],
+          ["5","평평하지 않은 지면 (계단, 경사로)도 혼자 걸을 수 있음."],
+        ],
+      },
+      { id:"score", label:"FAC 점수 (0~5)", type:"number", placeholder:"0 ~ 5" },
+      { id:"assistive", label:"보조도구", type:"text", placeholder:"예: 지팡이, 워커, 없음" },
+      { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
+    ],
+  },
+  "10mWT": {
+    label: "10mWT (10m 보행 검사)",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"test_failure", label:"Test Failure", type:"toggle", options:["해당 없음","Test failure"] },
+      { id:"speed_type", label:"검사 종류", type:"toggle", options:["Maximum speed","Comfortable speed"] },
+      { id:"trial1", label:"시행 1 (초)", type:"number", placeholder:"" },
+      { id:"steps1", label:"스텝 수 - 시행 1", type:"number", placeholder:"", inputMode:"numeric" },
+      { id:"trial2", label:"시행 2 (초)", type:"number", placeholder:"" },
+      { id:"steps2", label:"스텝 수 - 시행 2", type:"number", placeholder:"", inputMode:"numeric" },
+      { id:"trial3", label:"시행 3 (초)", type:"number", placeholder:"" },
+      { id:"steps3", label:"스텝 수 - 시행 3", type:"number", placeholder:"", inputMode:"numeric" },
+      { id:"avg", label:"평균 (초)", type:"number_auto", placeholder:"자동계산" },
+      { id:"speed", label:"속도 (m/s)", type:"number_auto", placeholder:"자동계산" },
+      { id:"assistive", label:"보조도구", type:"text", placeholder:"예: 지팡이, 워커, 없음" },
+      { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
+    ],
+  },
+  ROM: {
+    label: "ROM (관절가동범위)",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"_rom", label:"", type:"rom_table" },
+      { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
+    ],
+  },
+  MMT: {
+    label: "MMT (도수근력검사)",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"_mmt", label:"", type:"mmt_sections" },
+      { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
+    ],
+  },
+  BBS: {
+    label: "BBS (버그균형척도)",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"_bbs", label:"", type:"bbs_full" },
+      { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
+    ],
+  },
+  FGA: {
+    label: "FGA (기능적 보행 평가)",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"_fga", label:"", type:"fga_full" },
+      { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
+    ],
+  },
+  "FOG-Q": {
+    label: "FOG-Q (보행동결 설문)",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"_fogq", label:"", type:"fogq_full" },
+      { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
+    ],
+  },
+};
+
+const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
+const EVAL_COLORS = {
+  "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
+  ROM:    { bg:"#edf7ee", border:"#3daa5c", text:"#1a6b35", accent:"#3daa5c" },
+  MMT:    { bg:"#fef3e2", border:"#e8961e", text:"#7a4d0a", accent:"#e8961e" },
+  BBS:    { bg:"#f3eeff", border:"#8b5cf6", text:"#4c1d95", accent:"#8b5cf6" },
+  FAC:    { bg:"#fde8ef", border:"#e53e6d", text:"#7a1030", accent:"#e53e6d" },
+  FGA:    { bg:"#f0fdf4", border:"#16a34a", text:"#14532d", accent:"#16a34a" },
+  "FOG-Q":{ bg:"#fef3f2", border:"#f97316", text:"#7c2d12", accent:"#f97316" },
+};
+
+function loadData(){ try{ const r=localStorage.getItem("pt_eval_data"); if(r){ const d=JSON.parse(r); return{...d,templates:DEFAULT_TEMPLATES}; } }catch{} return{patients:[],records:{},templates:DEFAULT_TEMPLATES}; }
+function saveData(d){ localStorage.setItem("pt_eval_data",JSON.stringify(d)); }
+
+function useIsTablet(){
+  const [v,setV]=useState(window.innerWidth>=768);
+  useEffect(()=>{ const fn=()=>setV(window.innerWidth>=768); window.addEventListener("resize",fn); return()=>window.removeEventListener("resize",fn); },[]);
+  return v;
+}
+
+const IcoPlus    =()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
+const IcoTrash   =()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>;
+const IcoSearch  =()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
+const IcoBack    =()=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>;
+const IcoSettings=()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
+const IcoDoc     =()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>;
+const IcoUser    =()=><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+
+const S={
+  th:{background:"#f8fafc",borderBottom:"1.5px solid #e2e8f0",padding:"9px 10px",fontSize:"11px",fontWeight:700,color:"#64748b",textAlign:"left"},
+  td:{padding:"10px",fontSize:"13px",color:"#334155",borderBottom:"1px solid #f1f5f9"},
+  table:{width:"100%",borderCollapse:"collapse"},
+  delBtn:{background:"none",border:"1px solid #fca5a5",borderRadius:"6px",padding:"4px 7px",cursor:"pointer",color:"#ef4444",display:"inline-flex",alignItems:"center"},
+  secLabel:{fontSize:"11px",fontWeight:700,color:"#94a3b8",letterSpacing:"1px",textTransform:"uppercase",marginBottom:"12px"},
+  formCard:{background:"#fff",borderRadius:"12px",border:"1.5px solid #e2e8f0",padding:"18px",marginBottom:"14px",boxShadow:"0 2px 6px rgba(0,0,0,0.04)"},
+  fieldRow:{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"16px"},
+  fieldLabel:{fontSize:"11px",fontWeight:700,color:"#64748b",letterSpacing:"0.3px",textTransform:"uppercase"},
+  input:{border:"1.5px solid #e2e8f0",borderRadius:"8px",padding:"10px 12px",outline:"none",color:"#1e293b",width:"100%",maxWidth:"320px",fontSize:"16px"},
+  inputAuto:{border:"1.5px solid #bfdbfe",borderRadius:"8px",padding:"10px 12px",outline:"none",color:"#2563eb",width:"100%",maxWidth:"320px",fontSize:"16px",background:"#eff6ff",fontWeight:600},
+  textarea:{border:"1.5px solid #e2e8f0",borderRadius:"8px",padding:"10px 12px",outline:"none",color:"#1e293b",minHeight:"80px",resize:"vertical",width:"100%",fontSize:"16px"},
+  tblSection:{marginBottom:"16px",borderRadius:"8px",overflow:"hidden",border:"1.5px solid #e2e8f0"},
+  cellInput:{border:"1.5px solid #e2e8f0",borderRadius:"5px",padding:"5px 4px",fontSize:"14px",width:"58px",outline:"none",textAlign:"center",color:"#1e293b"},
+  errorBox:{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"10px 14px",color:"#dc2626",fontSize:"12px",marginBottom:"12px"},
+};
+
+const IcoPencil=()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
+
+function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
+  const [search,setSearch]=useState("");
+  const [addMode,setAddMode]=useState(false);
+  const [newId,setNewId]=useState("");
+  const [newName,setNewName]=useState("");
+  const [editPt,setEditPt]=useState(null); // {id, name} 수정 중인 환자
+  const [editId,setEditId]=useState("");
+  const [editName,setEditName]=useState("");
+
+  const genId=()=>{
+    let n=1;
+    while(db.patients.find(p=>p.id==="새ID"+n)) n++;
+    return "새ID"+n;
+  };
+  const genName=()=>{
+    let n=1;
+    while(db.patients.find(p=>p.name==="새 환자"+n)) n++;
+    return "새 환자"+n;
+  };
+  const addPt=()=>{
+    const id=(newId.trim()||genId());
+    const name=(newName.trim()||genName());
+    if(db.patients.find(p=>p.id===id)){alert("이미 존재하는 환자 ID입니다.");return;}
+    persist({...db,patients:[...db.patients,{id,name}]});
+    setNewId("");setNewName("");setAddMode(false);
+  };
+  const quickAdd=()=>{
+    const id=genId();
+    const name=genName();
+    const newPt={id,name};
+    const newDb={...db,patients:[...db.patients,newPt]};
+    persist(newDb);
+    onSelect(newPt);
+  };
+  const delPt=async(id)=>{
+    const pt=db.patients.find(p=>p.id===id);
+    const ok=await useConfirm(`"${pt?.name||id}"님이 명단에서 삭제되며 모든 평가 기록이 사라집니다.\n삭제하시겠습니까?`);
+    if(!ok) return;
+    const rec={...db.records};delete rec[id];
+    persist({...db,patients:db.patients.filter(p=>p.id!==id),records:rec});
+  };
+  const startEdit=(p,e)=>{
+    e.stopPropagation();
+    setEditPt(p);
+    setEditId(p.id);
+    setEditName(p.name);
+    setAddMode(false);
+  };
+  const saveEdit=()=>{
+    if(!editId.trim()||!editName.trim()) return;
+    const oldId=editPt.id;
+    const newIdVal=editId.trim();
+    if(newIdVal!==oldId&&db.patients.find(p=>p.id===newIdVal)){alert("이미 존재하는 환자 ID입니다.");return;}
+    // ID가 바뀌면 records 키도 이전
+    const newPatients=db.patients.map(p=>p.id===oldId?{id:newIdVal,name:editName.trim()}:p);
+    const newRecords={...db.records};
+    if(newIdVal!==oldId){
+      newRecords[newIdVal]=newRecords[oldId]||{};
+      delete newRecords[oldId];
+    }
+    persist({...db,patients:newPatients,records:newRecords});
+    setEditPt(null);
+  };
+
+  const filtered=db.patients.filter(p=>p.id.includes(search)||p.name.includes(search));
+  const inputStyle={border:"1.5px solid #e2e8f0",borderRadius:"7px",padding:"8px 10px",outline:"none",color:"#1e293b",fontSize:"15px",width:"100%"};
+
+  return(
+    <div className="panel-scroll"><div className="pad-sm">
+      <button style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:"7px",background:"#2563eb",color:"#fff",border:"none",borderRadius:"11px",padding:"13px",fontSize:"15px",fontWeight:700,cursor:"pointer",marginBottom:"10px",boxShadow:"0 2px 8px rgba(37,99,235,0.18)"}} onClick={quickAdd}>
+        <IcoPlus/> 새 환자 평가
+      </button>
+      <div style={{display:"flex",gap:"8px",marginBottom:"10px"}}>
+        <div style={{flex:1,display:"flex",alignItems:"center",gap:"7px",background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 10px"}}>
+          <IcoSearch/><input style={{border:"none",outline:"none",fontSize:"14px",color:"#334155",width:"100%",background:"transparent"}} placeholder="ID 또는 이름" value={search} onChange={e=>setSearch(e.target.value)}/>
+        </div>
+        <button style={{display:"flex",alignItems:"center",gap:"4px",background:"#f1f5f9",color:"#475569",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 12px",fontSize:"12px",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}} onClick={()=>{setAddMode(true);setEditPt(null);}}><IcoPlus/> 등록</button>
+      </div>
+
+      {/* 신규 추가 폼 */}
+      {addMode&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"7px",marginBottom:"10px",background:"#fff",border:"1.5px solid #2563eb",borderRadius:"10px",padding:"12px"}}>
+          <div style={{fontSize:"11px",fontWeight:700,color:"#2563eb",marginBottom:"2px"}}>새 환자 등록</div>
+          <input style={inputStyle} inputMode="numeric" placeholder="환자 ID (선택사항)" value={newId} onChange={e=>setNewId(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPt()}/>
+          <input style={inputStyle} placeholder="이름 (선택사항)" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPt()}/>
+          <div style={{display:"flex",gap:"7px"}}>
+            <button style={{flex:1,background:"#2563eb",color:"#fff",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",fontWeight:600,cursor:"pointer"}} onClick={addPt}>저장</button>
+            <button style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",cursor:"pointer"}} onClick={()=>{setAddMode(false);setNewId("");setNewName("");}}>취소</button>
+          </div>
+        </div>
+      )}
+
+      {/* 수정 폼 */}
+      {editPt&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"7px",marginBottom:"10px",background:"#fff",border:"1.5px solid #f59e0b",borderRadius:"10px",padding:"12px"}}>
+          <div style={{fontSize:"11px",fontWeight:700,color:"#b45309",marginBottom:"2px"}}>환자 정보 수정</div>
+          <input style={{...inputStyle,borderColor:"#fcd34d"}} inputMode="numeric" placeholder="환자 ID" value={editId} onChange={e=>setEditId(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()}/>
+          <input style={{...inputStyle,borderColor:"#fcd34d"}} placeholder="이름" value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()}/>
+          <div style={{display:"flex",gap:"7px"}}>
+            <button style={{flex:1,background:"#f59e0b",color:"#fff",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",fontWeight:600,cursor:"pointer"}} onClick={saveEdit}>저장</button>
+            <button style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",cursor:"pointer"}} onClick={()=>setEditPt(null)}>취소</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{background:"#fff",borderRadius:"12px",overflow:"hidden",border:"1.5px solid #e2e8f0",boxShadow:"0 2px 6px rgba(0,0,0,0.04)"}}>
+        {filtered.length===0?(
+          <div style={{padding:"32px",textAlign:"center",color:"#94a3b8",fontSize:"13px"}}>{search?"검색 결과 없음":"등록된 환자가 없습니다."}</div>
+        ):filtered.map(p=>{
+          const total=EVAL_KEYS.reduce((s,k)=>s+(db.records[p.id]?.[k]?.length||0),0);
+          const isSel=selectedPatient?.id===p.id;
+          const isEditing=editPt?.id===p.id;
+          return(
+            <div key={p.id} className="pt-row" style={{padding:"11px 12px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",justifyContent:"space-between",background:isEditing?"#fffbeb":isSel?"#eff6ff":"white"}} onClick={()=>onSelect(p)}>
+              <div style={{minWidth:0}}>
+                <div style={{fontFamily:"monospace",color:"#2563eb",fontSize:"12px",marginBottom:"1px"}}>{p.id}</div>
+                <div style={{fontWeight:600,fontSize:"14px",color:"#1e293b"}}>{p.name}</div>
+                <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"1px"}}>{total}건의 기록</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:"6px",flexShrink:0}}>
+                {isSel&&!isEditing&&<div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#2563eb"}}/>}
+                <button style={{background:"none",border:"1px solid #fcd34d",borderRadius:"6px",padding:"4px 7px",cursor:"pointer",color:"#b45309",display:"inline-flex",alignItems:"center"}} onClick={e=>startEdit(p,e)}><IcoPencil/></button>
+                <button style={S.delBtn} onClick={e=>{e.stopPropagation();delPt(p.id);}}><IcoTrash/></button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div></div>
+  );
+}
+
+// ── 날짜별 한눈에 보기 ───────────────────────────────────────────
+function buildPrintHtml(patient, date, items, templates){
+  const colMap=EVAL_COLORS;
+  let body="";
+  items.forEach(({key,rec})=>{
+    const col=colMap[key];
+    const tmpl=templates[key];
+    if(!tmpl||!rec.data) return;
+    body+=`<div style="border:1.5px solid ${col.border};border-radius:10px;margin-bottom:16px;overflow:hidden;page-break-inside:avoid;">
+      <div style="background:${col.bg};padding:8px 14px;border-bottom:1px solid ${col.border};">
+        <span style="font-size:14px;font-weight:800;color:${col.accent};">${key}</span>
+        <span style="font-size:12px;color:${col.text};margin-left:6px;">${tmpl.label||""}</span>
+      </div>
+      <div style="padding:12px 14px;font-size:13px;color:#334155;">`;
+
+    tmpl.fields.filter(f=>f.id!=="date").forEach(field=>{
+      const val=rec.data[field.id];
+      if(field.type==="fac_select"){
+        const score=rec.data["score"]??"";
+        const row=field.rows.find(([v])=>v===String(score));
+        body+=`<div style="margin-bottom:8px;"><strong style="color:${col.accent};">FAC ${score}점</strong>`;
+        if(row) body+=`<div style="margin-top:4px;background:${col.bg};padding:6px 10px;border-radius:6px;font-size:12px;white-space:pre-line;">${row[1]}</div>`;
+        body+=`</div>`;
+      } else if(field.id==="score"&&key==="FAC"){
+        // skip
+      } else if(field.type==="rom_table"){
+        const romData=val||{};
+        ROM_SECTIONS.forEach((sec,si)=>{
+          body+=`<div style="margin-bottom:8px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead><tr>
+              <th style="background:#e8f4fd;padding:5px;border:1px solid #e2e8f0;width:30%;text-align:center;">Right</th>
+              <th style="padding:5px;border:1px solid #e2e8f0;text-align:center;font-weight:700;">${sec.title}</th>
+              <th style="background:#e8f4fd;padding:5px;border:1px solid #e2e8f0;width:30%;text-align:center;">Left</th>
+            </tr></thead><tbody>`;
+          sec.rows.forEach((row,ri)=>{
+            const k2=si+"_"+ri;
+            const r=romData[k2]?.right||"—"; const l=romData[k2]?.left||"—";
+            body+=`<tr style="background:${ri%2===0?"#fafbfc":"white"}">
+              <td style="text-align:center;padding:5px;border:1px solid #f1f5f9;font-weight:600;color:#3daa5c;">${r}</td>
+              <td style="text-align:center;padding:5px;border:1px solid #f1f5f9;font-size:11px;color:#475569;">${row}</td>
+              <td style="text-align:center;padding:5px;border:1px solid #f1f5f9;font-weight:600;color:#3daa5c;">${l}</td>
+            </tr>`;
+          });
+          body+=`</tbody></table></div>`;
+        });
+      } else if(field.type==="mmt_sections"){
+        const md=val||{};
+        MMT_SECTIONS.forEach((grp,gi)=>{
+          body+=`<div style="margin-bottom:8px;"><div style="font-size:11px;font-weight:800;background:#fef3e2;padding:5px 10px;border-radius:6px 6px 0 0;border:1px solid #e8961e;color:#7a4d0a;">${grp.group}</div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #e8961e;border-top:none;border-radius:0 0 6px 6px;overflow:hidden;">`;
+          grp.sections.forEach((sec,si)=>{
+            body+=`<thead><tr><th style="background:#fef9f0;padding:5px;border:1px solid #e8961e;color:#7a4d0a;">${sec.title}</th><th style="padding:5px;border:1px solid #e8961e;text-align:center;">Right</th><th style="padding:5px;border:1px solid #e8961e;text-align:center;">Left</th></tr></thead><tbody>`;
+            sec.rows.forEach((row,ri)=>{
+              const k2=gi+"_"+si+"_"+ri;
+              body+=`<tr style="background:${ri%2===0?"#fafbfc":"white"}">
+                <td style="padding:5px;border:1px solid #f1f5f9;padding-left:14px;">${row}</td>
+                <td style="text-align:center;padding:5px;border:1px solid #f1f5f9;font-weight:600;color:#e8961e;">${md[k2]?.right||"—"}</td>
+                <td style="text-align:center;padding:5px;border:1px solid #f1f5f9;font-weight:600;color:#e8961e;">${md[k2]?.left||"—"}</td>
+              </tr>`;
+            });
+            body+=`</tbody>`;
+          });
+          body+=`</table></div>`;
+        });
+      } else if(field.type==="bbs_full"){
+        const scores=val||[];
+        const total=rec.data.bbs_total??scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+        body+=`<div style="background:#f3eeff;padding:8px 12px;border-radius:8px;border:1.5px solid #8b5cf6;margin-bottom:8px;">
+          <span style="font-weight:700;color:#4c1d95;font-size:13px;">BBS 총점 </span>
+          <span style="font-size:20px;font-weight:800;color:#8b5cf6;">${total}</span>
+          <span style="color:#94a3b8;font-size:12px;"> / 56</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px;">`;
+        BBS_ITEMS.forEach((item,ri)=>{
+          const s=scores[ri];
+          body+=`<span style="font-size:11px;padding:2px 8px;border-radius:20px;background:#f3eeff;color:#8b5cf6;font-weight:600;">${ri+1}: ${s!==null&&s!==undefined?s+"점":"—"}</span>`;
+        });
+        body+=`</div>`;
+      } else if(field.type==="fga_full"){
+        const scores=val||[];
+        const total=rec.data.fga_total??scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+        body+=`<div style="background:#f0fdf4;padding:8px 12px;border-radius:8px;border:1.5px solid #16a34a;margin-bottom:8px;">
+          <span style="font-weight:700;color:#14532d;font-size:13px;">FGA 총점 </span>
+          <span style="font-size:20px;font-weight:800;color:#16a34a;">${total}</span>
+          <span style="color:#94a3b8;font-size:12px;"> / 30</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:4px;">`;
+        FGA_ITEMS.forEach((item,ri)=>{
+          const s=scores[ri];
+          const opt=s!==null&&s!==undefined?item.opts.find(([v])=>v===s):null;
+          const grade=opt?opt[1].split(" - ")[0]:"미선택";
+          body+=`<div style="font-size:11px;padding:4px 10px;border-radius:6px;background:#f0fdf4;border:1px solid #bbf7d0;">
+            <span style="font-weight:700;color:#16a34a;margin-right:6px;">${ri+1}. ${s}점</span>
+            <span style="color:#334155;">${grade}</span>
+          </div>`;
+        });
+        body+=`</div>`;
+      } else if(field.type==="fogq_full"){
+        const scores=val||[];
+        const total=rec.data.fogq_total??scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+        body+=`<div style="background:#fef3f2;padding:8px 12px;border-radius:8px;border:1.5px solid #f97316;margin-bottom:8px;">
+          <span style="font-weight:700;color:#7c2d12;font-size:13px;">FOG-Q 총점 </span>
+          <span style="font-size:20px;font-weight:800;color:#f97316;">${total}</span>
+          <span style="color:#94a3b8;font-size:12px;"> / 24</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:4px;">`;
+        FOGQ_ITEMS.forEach((item,ri)=>{
+          const s=scores[ri];
+          const opt=s!==null&&s!==undefined?item.opts.find(([v])=>v===s):null;
+          body+=`<div style="font-size:11px;padding:4px 10px;border-radius:6px;background:#fef3f2;border:1px solid #fed7aa;">
+            <span style="font-weight:700;color:#f97316;margin-right:6px;">${ri+1}. ${s!==null&&s!==undefined?s+"점":"미선택"}</span>
+            <span style="color:#334155;">${opt?opt[1]:"—"}</span>
+          </div>`;
+        });
+        body+=`</div>`;
+      } else if(field.type==="toggle"||field.type==="number"||field.type==="number_auto"||field.type==="text"){
+        if(val||val===0) body+=`<div style="margin-bottom:4px;"><span style="color:#94a3b8;font-size:11px;min-width:80px;display:inline-block;">${field.label}</span><span style="font-weight:600;">${val}</span></div>`;
+      } else if(field.type==="textarea"&&val){
+        body+=`<div style="font-size:12px;color:#64748b;background:#f8fafc;padding:6px 10px;border-radius:6px;border:1px solid #e2e8f0;">${val}</div>`;
+      }
+    });
+    body+=`</div></div>`;
+  });
+
+  return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"/>
+    <title>${patient.name} - ${date} 평가기록</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;padding:20px;color:#1e293b;font-size:13px;}
+      @media print{body{padding:10px;}@page{margin:15mm;}}
+    </style>
+  </head><body>
+    <div style="margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid #1e293b;">
+      <div style="font-size:18px;font-weight:800;color:#1e293b;">${patient.name} <span style="font-size:13px;color:#2563eb;font-family:monospace;">(${patient.id})</span></div>
+      <div style="font-size:14px;color:#475569;margin-top:4px;">검사일: ${date}</div>
+    </div>
+    ${body}
+  </body></html>`;
+}
+
+function DateSummaryView({db,persist,patient,templates,onEditForm}){
+  const pid=patient.id;
+  const allRecs=db.records[pid]||{};
+
+  const dateMap={};
+  EVAL_KEYS.forEach(k=>{
+    (allRecs[k]||[]).forEach(rec=>{
+      const d=rec.data?.date||"날짜 미기재";
+      if(!dateMap[d])dateMap[d]=[];
+      dateMap[d].push({key:k,rec});
+    });
+  });
+  const dates=Object.keys(dateMap).sort((a,b)=>b.localeCompare(a));
+  const [openDate,setOpenDate]=useState(dates[0]||null);
+
+  const shareDate=async(d,items)=>{
+    const html=buildPrintHtml(patient,d,items,templates);
+    const blob=new Blob([html],{type:"text/html"});
+    const file=new File([blob],`${patient.name}_${d}_평가기록.html`,{type:"text/html"});
+    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){
+      try{ await navigator.share({title:`${patient.name} ${d} 평가기록`,files:[file]}); return; }catch(e){ if(e.name==="AbortError") return; }
+    }
+    // fallback: 다운로드
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=`${patient.name}_${d}_평가기록.html`;
+    document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);document.body.removeChild(a);},1000);
+  };
+
+  if(dates.length===0) return(
+    <div style={{background:"#fff",border:"1.5px dashed #cbd5e1",borderRadius:"12px",padding:"36px 20px",textAlign:"center",color:"#475569",lineHeight:2.2}}>
+      아직 저장된 기록이 없습니다.<br/><span style={{color:"#94a3b8",fontSize:"12px"}}>항목별 탭에서 기록을 추가하세요.</span>
+    </div>
+  );
+
+  const IcoShare=()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>;
+
+  return(
+    <div>
+      {dates.map(d=>{
+        const items=dateMap[d].sort((a,b)=>EVAL_KEYS.indexOf(a.key)-EVAL_KEYS.indexOf(b.key));
+        const isOpen=openDate===d;
+        return(
+          <div key={d} style={{marginBottom:"12px"}}>
+            {/* 날짜 헤더 */}
+            <div style={{display:"flex",alignItems:"stretch",borderRadius:isOpen?"10px 10px 0 0":"10px",border:"1.5px solid #e2e8f0",overflow:"hidden"}}>
+              {/* 클릭 영역 */}
+              <div onClick={()=>setOpenDate(isOpen?null:d)}
+                style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",justifyContent:"center",padding:"10px 12px",background:"#fff",cursor:"pointer",userSelect:"none",gap:"5px"}}>
+                {/* 첫째줄: 날짜 + 시간 + 펼치기 */}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{display:"flex",alignItems:"baseline",gap:"7px",minWidth:0}}>
+                    <span style={{fontSize:"14px",fontWeight:700,color:"#1e293b",flexShrink:0}}>{d}</span>
+                    {(()=>{
+                      const times=items.map(({rec})=>rec.savedAt).filter(Boolean).sort((a,b)=>a-b);
+                      if(!times.length) return null;
+                      const fmt=t=>new Date(t).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"});
+                      const first=fmt(times[0]);
+                      const last=fmt(times[times.length-1]);
+                      const label=first===last?first:`${first} ~ ${last}`;
+                      return <span style={{fontSize:"11px",color:"#94a3b8",fontWeight:400,flexShrink:0}}>🕐 {label}</span>;
+                    })()}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:"4px",flexShrink:0}}>
+                    <span style={{fontSize:"10px",color:"#94a3b8",fontWeight:500}}>{isOpen?"접기":"펼치기"}</span>
+                    <span style={{color:"#cbd5e1",fontSize:"16px",lineHeight:1}}>{isOpen?"▲":"▼"}</span>
+                  </div>
+                </div>
+                {/* 둘째줄: 배지들 (wrap) */}
+                <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
+                  {items.map(({key})=>{
+                    const col=EVAL_COLORS[key];
+                    return <span key={key} style={{fontSize:"10px",fontWeight:700,padding:"2px 7px",borderRadius:"20px",background:col.bg,color:col.accent,border:`1px solid ${col.border}`}}>{key}</span>;
+                  })}
+                </div>
+              </div>
+              {/* 공유 버튼 - 항상 우측 고정 */}
+              <button onClick={e=>{e.stopPropagation();shareDate(d,items);}}
+                style={{flexShrink:0,padding:"0 14px",background:"#f8fafc",border:"none",borderLeft:"1.5px solid #e2e8f0",cursor:"pointer",color:"#475569",display:"flex",alignItems:"center",gap:"5px",fontSize:"12px",fontWeight:600}}>
+                <IcoShare/> 공유
+              </button>
+            </div>
+
+            {/* 펼쳐진 내용 */}
+            {isOpen&&(
+              <div style={{border:"1.5px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px",background:"#f8fafc",padding:"12px"}}>
+                {items.map(({key,rec})=>{
+                  const col=EVAL_COLORS[key];
+                  const tmpl=templates[key];
+                  return(
+                    <div key={rec.id} style={{background:"#fff",border:`1.5px solid ${col.border}`,borderRadius:"10px",marginBottom:"10px",overflow:"hidden"}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",background:col.bg,borderBottom:`1px solid ${col.border}`}}>
+                        <div>
+                          <span style={{fontSize:"13px",fontWeight:800,color:col.accent}}>{key} <span style={{fontSize:"11px",fontWeight:400,color:col.text}}>{tmpl?.label||""}</span></span>
+                          <div style={{fontSize:"11px",color:col.text,marginTop:"2px"}}>🕐 {new Date(rec.savedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}</div>
+                        </div>
+                        <button style={{background:"none",border:`1.5px solid ${col.accent}`,borderRadius:"7px",padding:"4px 10px",fontSize:"11px",fontWeight:600,cursor:"pointer",color:col.accent}}
+                          onClick={()=>onEditForm(key,rec)}>수정</button>
+                      </div>
+                      <div style={{padding:"10px 12px"}}>
+                        <RecordSummary evalKey={key} data={rec.data} col={col} templates={templates}/>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// 기록 요약 표시 (읽기전용)
+function RecordSummary({evalKey,data,col,templates}){
+  if(!data) return null;
+  const tmpl=templates[evalKey];
+  if(!tmpl) return null;
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+      {tmpl.fields.filter(f=>f.id!=="date").map(field=>{
+        const val=data[field.id];
+
+        if(field.type==="fac_select"){
+          const score=data["score"]??"";
+          const row=field.rows.find(([v])=>v===String(score));
+          return(
+            <div key={field.id}>
+              <div style={{display:"inline-flex",alignItems:"center",gap:"8px",marginBottom:"6px"}}>
+                <span style={{fontWeight:800,fontSize:"15px",color:col.accent}}>FAC {score}점</span>
+              </div>
+              {row&&<div style={{fontSize:"12px",color:"#475569",lineHeight:1.7,background:col.bg,padding:"8px 12px",borderRadius:"7px",border:`1px solid ${col.border}`,whiteSpace:"pre-line"}}>{row[1]}</div>}
+            </div>
+          );
+        }
+        if(field.id==="score"&&evalKey==="FAC") return null; // FAC는 위에서 처리
+
+        if(field.type==="rom_table"){
+          const romData=val||{};
+          return(
+            <div key={field.id}>
+              {ROM_SECTIONS.map((sec,si)=>(
+                <div key={si} style={{...S.tblSection,marginBottom:"10px"}}>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{...S.table,marginBottom:0}}>
+                      <thead><tr>
+                        <th style={{...S.th,width:"28%",textAlign:"center"}}>Right</th>
+                        <th style={{...S.th,textAlign:"center",background:"#e8f4fd",color:"#1a5f8a"}}>{sec.title}</th>
+                        <th style={{...S.th,width:"28%",textAlign:"center"}}>Left</th>
+                      </tr></thead>
+                      <tbody>
+                        {sec.rows.map((row,ri)=>{
+                          const key=si+"_"+ri;
+                          const r=romData[key]?.right||"—";
+                          const l=romData[key]?.left||"—";
+                          return(
+                            <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                              <td style={{...S.td,textAlign:"center",fontWeight:600,color:"#3daa5c"}}>{r}</td>
+                              <td style={{...S.td,fontSize:"12px",color:"#475569",textAlign:"center"}}>{row}</td>
+                              <td style={{...S.td,textAlign:"center",fontWeight:600,color:"#3daa5c"}}>{l}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+          ))}
+            </div>
+          );
+        }
+        if(field.type==="mmt_sections"){
+          const md=val||{};
+          return(
+            <div key={field.id}>
+              {MMT_SECTIONS.map((grp,gi)=>(
+                <div key={gi} style={{marginBottom:"14px"}}>
+                  <div style={{fontSize:"12px",fontWeight:800,color:"#7a4d0a",background:"#fef3e2",padding:"7px 12px",borderRadius:"8px 8px 0 0",border:"1.5px solid #e8961e",borderBottom:"none"}}>{grp.group}</div>
+                  <div style={{border:"1.5px solid #e8961e",borderRadius:"0 0 8px 8px",overflow:"hidden"}}>
+                    {grp.sections.map((sec,si)=>(
+                      <table key={si} style={{...S.table,marginBottom:0}}>
+                        <thead><tr>
+                          <th style={{...S.th,background:"#fef9f0",color:"#7a4d0a",textAlign:"center"}}>{sec.title}</th>
+                          <th style={{...S.th,width:"28%",textAlign:"center"}}>Right</th>
+                          <th style={{...S.th,width:"28%",textAlign:"center"}}>Left</th>
+                        </tr></thead>
+                        <tbody>
+                          {sec.rows.map((row,ri)=>{
+                            const key=gi+"_"+si+"_"+ri;
+                            return(
+                              <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                                <td style={{...S.td,fontSize:"13px",paddingLeft:"18px"}}>{row}</td>
+                                <td style={{...S.td,textAlign:"center",fontWeight:600,color:"#e8961e"}}>{md[key]?.right!=null&&md[key]?.right!==""?md[key].right:"—"}</td>
+                                <td style={{...S.td,textAlign:"center",fontWeight:600,color:"#e8961e"}}>{md[key]?.left!=null&&md[key]?.left!==""?md[key].left:"—"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        if(field.type==="mmt_table"){
+          const td=val||[];
+          return(
+            <div key={field.id} style={S.tblSection}>
+              <div style={{overflowX:"auto"}}>
+                <table style={{...S.table,marginBottom:0}}>
+                  <thead><tr>
+                    <th style={S.th}>부위</th><th style={S.th}>근육/운동</th>
+                    <th style={{...S.th,textAlign:"center"}}>좌</th>
+                    <th style={{...S.th,textAlign:"center"}}>우</th>
+                  </tr></thead>
+                  <tbody>
+                    {field.rows.map((row,ri)=>(
+                      <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                        <td style={S.td}>{row[0]}</td><td style={S.td}>{row[1]}</td>
+                        <td style={{...S.td,textAlign:"center",fontWeight:600,color:col.accent}}>{td[ri]?.left??"—"}</td>
+                        <td style={{...S.td,textAlign:"center",fontWeight:600,color:col.accent}}>{td[ri]?.right??"—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="fga_full"){
+          const scores=val||[];
+          const total=data.fga_total??scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          return(
+            <div key={field.id}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"#f0fdf4",borderRadius:"8px",border:"1.5px solid #16a34a",marginBottom:"8px"}}>
+                <span style={{fontSize:"12px",fontWeight:700,color:"#14532d"}}>FGA 총점</span>
+                <span style={{fontSize:"20px",fontWeight:800,color:"#16a34a"}}>{total}<span style={{fontSize:"12px",color:"#94a3b8",fontWeight:400}}> / 30</span></span>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
+                {FGA_ITEMS.map((item,ri)=>{
+                  const s=scores[ri];
+                  return <span key={ri} style={{fontSize:"11px",padding:"2px 8px",borderRadius:"20px",background:s!==null&&s!==undefined?"#f0fdf4":"#f1f5f9",color:s!==null&&s!==undefined?"#16a34a":"#94a3b8",fontWeight:600,border:"1px solid "+(s!==null&&s!==undefined?"#bbf7d0":"#e2e8f0")}}>{ri+1}: {s!==null&&s!==undefined?s+"점":"—"}</span>;
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="table"){
+          const td=val||[];
+          const two=field.headers.length>=4, one=field.headers.length===3;
+          return(
+            <div key={field.id} style={S.tblSection}>
+              <div style={{overflowX:"auto"}}>
+                <table style={{...S.table,marginBottom:0}}>
+                  <thead><tr>{field.headers.map((h,i)=><th key={i} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {field.rows.map((row,ri)=>(
+                      <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                        {row.map((cell,ci)=><td key={ci} style={S.td}>{cell}</td>)}
+                        {two&&<><td style={{...S.td,fontWeight:600,color:col.accent}}>{td[ri]?.left||"—"}</td><td style={{...S.td,fontWeight:600,color:col.accent}}>{td[ri]?.right||"—"}</td></>}
+                        {one&&!two&&<td style={{...S.td,fontWeight:600,color:col.accent}}>{td[ri]?.score||"—"}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="bbs_full"){
+          const scores=val||[];
+          const total=data.bbs_total??scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          return(
+            <div key={field.id}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"#f3eeff",borderRadius:"8px",border:"1.5px solid #8b5cf6",marginBottom:"8px"}}>
+                <span style={{fontSize:"12px",fontWeight:700,color:"#4c1d95"}}>BBS 총점</span>
+                <span style={{fontSize:"20px",fontWeight:800,color:"#8b5cf6"}}>{total}<span style={{fontSize:"12px",color:"#94a3b8",fontWeight:400}}> / 56</span></span>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
+                {BBS_ITEMS.map((item,ri)=>{
+                  const s=scores[ri];
+                  return <span key={ri} style={{fontSize:"11px",padding:"2px 8px",borderRadius:"20px",background:s!==null&&s!==undefined?"#f3eeff":"#f1f5f9",color:s!==null&&s!==undefined?"#8b5cf6":"#94a3b8",fontWeight:600}}>{ri+1}: {s!==null&&s!==undefined?s+"점":"—"}</span>;
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="fga_full"){
+          const scores=val||[];
+          const total=data.fga_total??scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          return(
+            <div key={field.id}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"#f0fdf4",borderRadius:"8px",border:"1.5px solid #16a34a",marginBottom:"8px"}}>
+                <span style={{fontSize:"12px",fontWeight:700,color:"#14532d"}}>FGA 총점</span>
+                <span style={{fontSize:"20px",fontWeight:800,color:"#16a34a"}}>{total}<span style={{fontSize:"12px",color:"#94a3b8",fontWeight:400}}> / 30</span></span>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
+                {FGA_ITEMS.map((item,ri)=>{
+                  const s=scores[ri];
+                  return <span key={ri} style={{fontSize:"11px",padding:"2px 8px",borderRadius:"20px",background:s!==null&&s!==undefined?"#f0fdf4":"#f1f5f9",color:s!==null&&s!==undefined?"#16a34a":"#94a3b8",fontWeight:600,border:"1px solid "+(s!==null&&s!==undefined?"#bbf7d0":"#e2e8f0")}}>{ri+1}: {s!==null&&s!==undefined?s+"점":"—"}</span>;
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="fogq_full"){
+          const scores=val||[];
+          const total=data.fogq_total??scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          return(
+            <div key={field.id}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"#fef3f2",borderRadius:"8px",border:"1.5px solid #f97316",marginBottom:"8px"}}>
+                <span style={{fontSize:"12px",fontWeight:700,color:"#7c2d12"}}>FOG-Q 총점</span>
+                <span style={{fontSize:"20px",fontWeight:800,color:"#f97316"}}>{total}<span style={{fontSize:"12px",color:"#94a3b8",fontWeight:400}}> / 24</span></span>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
+                {FOGQ_ITEMS.map((item,ri)=>{
+                  const s=scores[ri];
+                  return <span key={ri} style={{fontSize:"11px",padding:"2px 8px",borderRadius:"20px",background:s!==null&&s!==undefined?"#fef3f2":"#f1f5f9",color:s!==null&&s!==undefined?"#f97316":"#94a3b8",fontWeight:600,border:"1px solid "+(s!==null&&s!==undefined?"#fed7aa":"#e2e8f0")}}>{ri+1}: {s!==null&&s!==undefined?s+"점":"—"}</span>;
+                })}
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="toggle"||field.type==="number"||field.type==="number_auto"||field.type==="text"){
+          if(!val&&val!==0) return null;
+          return(
+            <div key={field.id} style={{display:"flex",gap:"6px",alignItems:"baseline"}}>
+              <span style={{fontSize:"11px",color:"#94a3b8",minWidth:"80px"}}>{field.label}</span>
+              <span style={{fontSize:"13px",fontWeight:600,color:"#1e293b"}}>{val}</span>
+            </div>
+          );
+        }
+
+        if(field.type==="textarea"&&val){
+          return(
+            <div key={field.id} style={{fontSize:"12px",color:"#64748b",background:"#f8fafc",padding:"7px 10px",borderRadius:"7px",border:"1px solid #e2e8f0"}}>{val}</div>
+          );
+        }
+
+        return null;
+      })}
+    </div>
+  );
+}
+
+function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useConfirm}){
+  const [tab,setTab]=useState("item");   // "item" | "date"
+  const [rv,setRv]=useState("eval-select");
+  const [ek,setEk]=useState(null);
+  const [editRec,setEditRec]=useState(null);
+  const [tmplJson,setTmplJson]=useState("");
+  const [tmplErr,setTmplErr]=useState("");
+  const evalFormDirtyRef=React.useRef(false); // EvalForm의 isDirty를 공유
+  const evalFormSaveRef=React.useRef(null);   // EvalForm의 save 함수
+  useEffect(()=>{setRv("eval-select");setEk(null);setEditRec(null);setTab("item");evalFormDirtyRef.current=false;},[patient?.id]);
+
+  // 뷰 전환 시 히스토리 push (모바일만)
+  const navTo=(nextRv,opts={})=>{
+    if(!isTablet) history.pushState({level:"content",rv:nextRv},"");
+    if(opts.ek!==undefined) setEk(opts.ek);
+    if(opts.editRec!==undefined) setEditRec(opts.editRec);
+    if(opts.tab!==undefined) setTab(opts.tab);
+    setRv(nextRv);
+  };
+
+  // 하드웨어 뒤로가기 핸들러를 ref에 등록
+  useEffect(()=>{
+    if(!goBackRef) return;
+    goBackRef.current=async()=>{
+      if(rv==="eval-form"){
+        if(evalFormDirtyRef.current){
+          const ans=await useConfirm("저장하지 않은 변경사항이 있습니다.\n저장하시겠습니까?");
+          if(ans){ if(evalFormSaveRef.current) evalFormSaveRef.current(); return true; }
+        }
+        evalFormDirtyRef.current=false;
+        setEditRec(null);setRv(tab==="date"?"date-view":"eval-history");return true;
+      }
+      if(rv==="eval-history"){setEk(null);setRv("eval-select");return true;}
+      if(rv==="template-editor"){setRv("eval-select");return true;}
+      if(rv==="date-view"){setRv("eval-select");return true;}
+      if(rv==="eval-select"&&!isTablet){onBackToList();return true;}
+      return false;
+    };
+  },[rv,tab,isTablet,goBackRef,onBackToList]);
+  const getRecs=(k)=>(db.records[patient?.id]?.[k]||[]).slice().sort((a,b)=>b.savedAt-a.savedAt);
+  const saveRec=(k,data,rid)=>{
+    const rec={...db.records},pid=patient.id;
+    if(!rec[pid])rec[pid]={};if(!rec[pid][k])rec[pid][k]=[];
+    if(rid!=null)rec[pid][k]=rec[pid][k].map(r=>r.id===rid?{...r,data,savedAt:Date.now()}:r);
+    else rec[pid][k]=[...rec[pid][k],{id:Date.now(),data,savedAt:Date.now()}];
+    persist({...db,records:rec});
+  };
+  const delRec=async(k,rid,date)=>{
+    const ok=await useConfirm(`"${date||"미기재"} ${k}" 항목을 삭제하시겠습니까?`);
+    if(!ok) return;
+    const rec={...db.records};rec[patient.id][k]=rec[patient.id][k].filter(r=>r.id!==rid);persist({...db,records:rec});
+  };
+  const leaveForm=async(dest,opts={})=>{
+    if(evalFormDirtyRef.current){
+      const ans=await useConfirm("저장하지 않은 변경사항이 있습니다.\n저장하시겠습니까?");
+      if(ans){
+        if(evalFormSaveRef.current) evalFormSaveRef.current();
+        return;
+      }
+    }
+    evalFormDirtyRef.current=false;
+    if(opts.clearRec) setEditRec(null);
+    if(opts.clearEk) setEk(null);
+    setRv(dest);
+  };
+  const goBack=()=>{
+    if(rv==="eval-form") leaveForm(tab==="date"?"date-view":"eval-history",{clearRec:true});
+    else if(rv==="eval-history"){setEk(null);setRv("eval-select");}
+    else if(rv==="template-editor")setRv("eval-select");
+    else if(rv==="date-view")setRv("eval-select");
+    else if(rv==="eval-select"&&!isTablet)onBackToList();
+  };
+  const crumb=()=>{
+    if(!patient) return "";
+    const base=`${patient.id}  ${patient.name}`;
+    if(rv==="template-editor") return "서식 편집";
+    if(ek&&rv==="eval-form") return `${base}  ›  ${ek} ${editRec?"수정":"신규"}`;
+    if(ek&&rv==="eval-history") return `${base}  ›  ${ek}`;
+    return base;
+  };
+
+  // 날짜별 탭에서 수정 버튼 클릭 시
+  const handleDateEditForm=(key,rec)=>{
+    setEk(key);setEditRec(rec);setRv("eval-form");
+  };
+
+  if(!patient) return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",flexDirection:"column",gap:"10px"}}>
+      <IcoUser/><span style={{color:"#94a3b8",fontSize:"14px"}}>환자를 선택하세요</span>
+    </div>
+  );
+  const showBack=rv!=="eval-select"||!isTablet;
+  const showTabs=rv==="eval-select"&&!["template-editor"].includes(rv);
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      {/* 서브 헤더 */}
+      <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:"0 14px",height:"44px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:"4px",minWidth:0}}>
+          {showBack&&<button onClick={goBack} style={{background:"none",border:"none",padding:"4px 4px 4px 0",color:"#475569",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}><IcoBack/></button>}
+          <span style={{fontSize:"17px",fontWeight:700,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{crumb()}</span>
+        </div>
+        {rv==="eval-select"&&(
+          <button style={{display:"flex",alignItems:"center",gap:"4px",background:"none",border:"1px solid #cbd5e1",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#475569",cursor:"pointer"}}
+            onClick={()=>{setTmplJson(JSON.stringify(db.templates,null,2));setTmplErr("");setRv("template-editor");}}>
+            <IcoSettings/> 서식 편집
+          </button>
+        )}
+      </div>
+
+      {/* 탭 (eval-select 화면에서만 표시) */}
+      {rv==="eval-select"&&(
+        <div style={{display:"flex",borderBottom:"1.5px solid #e2e8f0",background:"#fff",flexShrink:0}}>
+          {[["item","항목별"],["date","날짜별"]].map(([t,label])=>(
+            <button key={t} onClick={()=>setTab(t)}
+              style={{flex:1,padding:"10px 0",fontSize:"13px",fontWeight:tab===t?700:400,color:tab===t?"#2563eb":"#94a3b8",border:"none",borderBottom:tab===t?"2.5px solid #2563eb":"2.5px solid transparent",background:"none",cursor:"pointer",transition:"all 0.15s"}}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="panel-scroll" style={{flex:1}}><div className="pad-sm">
+
+        {/* 항목별 탭 */}
+        {rv==="eval-select"&&tab==="item"&&(
+          <><p style={S.secLabel}>평가 항목 선택</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"10px"}}>
+            {EVAL_KEYS.map(key=>{
+              const col=EVAL_COLORS[key],tmpl=db.templates[key],cnt=getRecs(key).length;
+              return(<div key={key} onClick={()=>{setEk(key);setRv("eval-history");}} style={{border:`2px solid ${col.border}`,borderRadius:"12px",padding:"16px 14px",cursor:"pointer",background:col.bg,boxShadow:"0 2px 6px rgba(0,0,0,0.05)"}}>
+                <div style={{fontSize:"18px",fontWeight:800,color:col.accent,marginBottom:"2px"}}>{key}</div>
+                <div style={{fontSize:"11px",color:col.text,marginBottom:"8px",lineHeight:1.4}}>{tmpl?.label||key}</div>
+                <div style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"11px",fontWeight:600,color:col.accent}}><IcoDoc/> {cnt}건</div>
+              </div>);
+            })}
+          </div></>
+        )}
+
+        {/* 날짜별 탭 */}
+        {rv==="eval-select"&&tab==="date"&&(
+          <><p style={S.secLabel}>날짜별 보기</p>
+          <DateSummaryView db={db} persist={persist} patient={patient} templates={db.templates} onEditForm={handleDateEditForm}/></>
+        )}
+
+        {rv==="eval-history"&&ek&&(
+          <><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+            <p style={S.secLabel}>저장된 기록</p>
+            <button style={{display:"flex",alignItems:"center",gap:"4px",background:EVAL_COLORS[ek].accent,color:"#fff",border:"none",borderRadius:"9px",padding:"7px 12px",fontSize:"12px",fontWeight:600,cursor:"pointer"}} onClick={()=>{setEditRec(null);setRv("eval-form");}}><IcoPlus/> 새 기록</button>
+          </div>
+          {getRecs(ek).length===0?(
+            <div style={{background:"#fff",border:"1.5px dashed #cbd5e1",borderRadius:"12px",padding:"36px 20px",textAlign:"center",color:"#475569",lineHeight:2.2}}>아직 기록이 없습니다.<br/><span style={{color:"#94a3b8",fontSize:"12px"}}>새 기록 버튼을 눌러 시작하세요.</span></div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+              {getRecs(ek).map(rec=>{
+                const col=EVAL_COLORS[ek];
+                const extra=ek==="BBS"&&rec.data?.bbs_total!==undefined?` · BBS ${rec.data.bbs_total}점`:ek==="FGA"&&rec.data?.fga_total!==undefined?` · FGA ${rec.data.fga_total}점`:ek==="FOG-Q"&&rec.data?.fogq_total!==undefined?` · FOG-Q ${rec.data.fogq_total}점`:"";
+                return(
+                  <div key={rec.id} onClick={()=>{setEditRec(rec);setRv("eval-form");}} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderLeft:`4px solid ${col.accent}`,borderRadius:"10px",padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px",cursor:"pointer"}}>
+                    <div>
+                      <div style={{fontSize:"13px",fontWeight:700,color:col.accent}}>검사일: {rec.data?.date||"미기재"}{extra}</div>
+                      <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"2px"}}>{new Date(rec.savedAt).toLocaleString("ko-KR")}</div>
+                    </div>
+                    <div style={{display:"flex",gap:"7px",alignItems:"center"}}>
+                      <button style={{background:"none",border:`1.5px solid ${col.accent}`,borderRadius:"7px",padding:"5px 12px",fontSize:"12px",fontWeight:600,cursor:"pointer",color:col.accent}} onClick={e=>{e.stopPropagation();setEditRec(rec);setRv("eval-form");}}>열람/수정</button>
+                      <button style={S.delBtn} onClick={e=>{e.stopPropagation();delRec(ek,rec.id,rec.data?.date);}}><IcoTrash/></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}</>
+        )}
+
+        {rv==="eval-form"&&ek&&(
+          <EvalForm template={db.templates[ek]} col={EVAL_COLORS[ek]} initialData={editRec?.data||null}
+            dirtyRef={evalFormDirtyRef}
+            saveRef={evalFormSaveRef}
+            useConfirm={useConfirm}
+            onSave={data=>{
+              saveRec(ek,data,editRec?.id??null);
+              evalFormDirtyRef.current=false;
+              setEditRec(null);
+              if(tab==="date"){setRv("eval-select");}
+              else{setRv("eval-history");}
+            }}
+            onCancel={()=>{
+              evalFormDirtyRef.current=false;
+              setEditRec(null);
+              if(tab==="date"){setRv("eval-select");}
+              else{setRv("eval-history");}
+            }}/>
+        )}
+
+        {rv==="template-editor"&&(
+          <><p style={S.secLabel}>서식 편집 (JSON)</p>
+          <p style={{fontSize:"12px",color:"#64748b",marginBottom:"10px"}}>각 평가 항목 구조를 직접 수정할 수 있습니다.</p>
+          {tmplErr&&<div style={S.errorBox}>{tmplErr}</div>}
+          <textarea style={{width:"100%",minHeight:"360px",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"12px",fontSize:"12px",fontFamily:"monospace",outline:"none",color:"#1e293b",resize:"vertical",lineHeight:1.6}} value={tmplJson} onChange={e=>setTmplJson(e.target.value)} spellCheck={false}/>
+          <div style={{display:"flex",gap:"8px",marginTop:"10px"}}>
+            <button style={{background:"#2563eb",color:"#fff",border:"none",borderRadius:"9px",padding:"11px 24px",fontSize:"14px",fontWeight:700,cursor:"pointer"}} onClick={()=>{try{const p=JSON.parse(tmplJson);persist({...db,templates:p});setRv("eval-select");setTmplErr("");}catch(e){setTmplErr("JSON 오류: "+e.message);}}}>저장</button>
+            <button style={{background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"9px",padding:"11px 18px",fontSize:"14px",cursor:"pointer"}} onClick={()=>setRv("eval-select")}>취소</button>
+          </div></>
+        )}
+
+      </div></div>
+    </div>
+  );
+}
+
+
+function MmtSelect({value, onChange}){
+  const [open,setOpen]=React.useState(false);
+  const btnRef=React.useRef(null);
+  const [pos,setPos]=React.useState({top:0,left:0});
+  // 전역 단일 터치 상태 - React synthetic event와 분리
+  const ts=React.useRef({startX:0,startY:0,moved:false,startedInPortal:false});
+
+  const calcPos=()=>{
+    if(!btnRef.current) return;
+    const r=btnRef.current.getBoundingClientRect();
+    setPos({top:r.bottom+window.scrollY+3,left:r.left+window.scrollX+r.width/2});
+  };
+
+  useEffect(()=>{
+    if(!open){ calcPos(); return; }
+    calcPos();
+
+    const getPortal=()=>document.getElementById("mmt-portal");
+
+    const onTouchStart=(e)=>{
+      const t=e.touches[0];
+      const portal=getPortal();
+      ts.current={
+        startX:t.clientX, startY:t.clientY,
+        moved:false,
+        startedInPortal:!!(portal&&portal.contains(e.target))
+      };
+    };
+
+    const onTouchMove=(e)=>{
+      const t=e.touches[0];
+      const dx=Math.abs(t.clientX-ts.current.startX);
+      const dy=Math.abs(t.clientY-ts.current.startY);
+      if(dx>5||dy>5) ts.current.moved=true;
+      // 포털 안에서 시작된 터치면 바깥 스크롤 완전 차단
+      if(ts.current.startedInPortal) e.preventDefault();
+    };
+
+    const onTouchEnd=(e)=>{
+      const moved=ts.current.moved;
+      const startedInPortal=ts.current.startedInPortal;
+      const t=e.changedTouches[0];
+      const el=document.elementFromPoint(t.clientX,t.clientY);
+      const portal=getPortal();
+      const isInPortal=portal&&portal.contains(el);
+      const isInBtn=btnRef.current&&btnRef.current.contains(el);
+
+      if(moved){
+        // 드래그 → 아무것도 하지 않음 (선택X, 닫기X)
+        return;
+      }
+      if(isInPortal){
+        // 포털 안 탭 → 해당 항목 값 찾아서 선택
+        const item=el.closest("[data-mmt]");
+        if(item){
+          e.preventDefault();
+          onChange(item.getAttribute("data-mmt-val"));
+          setOpen(false);
+        }
+      } else if(!isInBtn){
+        // 포털·버튼 바깥 탭 → 닫기
+        setOpen(false);
+      }
+    };
+
+    // PC: mousedown으로 바깥 닫기만
+    const onMouseDown=(e)=>{
+      const portal=getPortal();
+      if(!portal?.contains(e.target)&&!btnRef.current?.contains(e.target)) setOpen(false);
+    };
+
+    document.addEventListener("touchstart",onTouchStart,{passive:true});
+    document.addEventListener("touchmove",onTouchMove,{passive:false});
+    document.addEventListener("touchend",onTouchEnd,{passive:false});
+    document.addEventListener("mousedown",onMouseDown);
+    return()=>{
+      document.removeEventListener("touchstart",onTouchStart);
+      document.removeEventListener("touchmove",onTouchMove);
+      document.removeEventListener("touchend",onTouchEnd);
+      document.removeEventListener("mousedown",onMouseDown);
+    };
+  },[open, onChange]);
+
+  const display=value===""?"—":value;
+
+  const dropdown=open&&ReactDOM.createPortal(
+    <div
+      id="mmt-portal"
+      onWheel={e=>e.stopPropagation()}
+      style={{position:"absolute",top:pos.top,left:pos.left,transform:"translateX(-50%)",zIndex:9000,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:"10px",boxShadow:"0 8px 24px rgba(0,0,0,0.18)",overflowY:"auto",overflowX:"hidden",maxHeight:"320px",minWidth:"82px",WebkitOverflowScrolling:"touch"}}>
+      {MMT_OPTIONS.map(o=>{
+        const on=value===o;
+        return(
+          <div key={o}
+            data-mmt="1"
+            data-mmt-val={o}
+            onMouseUp={e=>{e.stopPropagation();onChange(o);setOpen(false);}}
+            style={{padding:"11px 14px",fontSize:"14px",fontWeight:on?700:400,color:on?"#e8961e":"#1e293b",background:on?"#fef9f0":"#fff",cursor:"pointer",textAlign:"center",borderBottom:"1px solid #f1f5f9",userSelect:"none",WebkitUserSelect:"none"}}>
+            {o===""?"—":o}
+          </div>
+        );
+      })}
+    </div>,
+    document.body
+  );
+
+  return(
+    <div style={{position:"relative",display:"inline-block"}}>
+      <button ref={btnRef}
+        onClick={e=>{e.stopPropagation();setOpen(o=>!o);}}
+        style={{width:"70px",height:"38px",border:"1.5px solid #e2e8f0",borderRadius:"8px",background:"#fff",color:value===""?"#94a3b8":"#1e293b",fontSize:"14px",fontWeight:value===""?400:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:"3px",userSelect:"none",WebkitUserSelect:"none"}}>
+        {display}
+        <span style={{fontSize:"9px",color:"#94a3b8",marginTop:"1px"}}>{open?"▲":"▼"}</span>
+      </button>
+      {dropdown}
+    </div>
+  );
+}
+
+
+function ConfirmDialog({msg, onYes, onNo}){
+  if(!msg) return null;
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.45)"}}>
+      <div style={{background:"#fff",borderRadius:"14px",padding:"24px 22px",maxWidth:"320px",width:"90%",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}>
+        <div style={{fontSize:"15px",fontWeight:600,color:"#1e293b",marginBottom:"20px",lineHeight:1.6,textAlign:"center"}}>{msg}</div>
+        <div style={{display:"flex",gap:"10px"}}>
+          <button onClick={onNo} style={{flex:1,padding:"11px",borderRadius:"9px",border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontSize:"14px",fontWeight:600,cursor:"pointer"}}>아니오</button>
+          <button onClick={onYes} style={{flex:1,padding:"11px",borderRadius:"9px",border:"none",background:"#ef4444",color:"#fff",fontSize:"14px",fontWeight:700,cursor:"pointer"}}>예</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App(){
+  const [db,setDb]=useState(()=>loadData());
+  const [patient,setPatient]=useState(null);
+  const [mobileView,setMobileView]=useState("list");
+  const isTablet=useIsTablet();
+  const contentGoBackRef=React.useRef(null);
+  const mobileViewRef=React.useRef("list");
+  const setMobileViewSync=(v)=>{mobileViewRef.current=v;setMobileView(v);};
+  const persist=nd=>{setDb(nd);saveData(nd);};
+  const [confirmState,setConfirmState]=useState({msg:null,onYes:null});
+  const useConfirm=(msg)=>new Promise(res=>{
+    setConfirmState({msg,onYes:()=>{setConfirmState({msg:null,onYes:null});res(true);},onNo:()=>{setConfirmState({msg:null,onYes:null});res(false);}});
+  });
+  const selectPatient=p=>{
+    setPatient(p);
+    if(!isTablet){
+      setMobileViewSync("content");
+    }
+  };
+  useEffect(()=>{
+    // 항상 스택에 두 단계 유지: [base] [guard]
+    // guard가 pop되면 뒤로가기 감지 → 처리 후 guard 다시 push
+    history.replaceState({level:"base"},"");
+    history.pushState({level:"guard"},"");
+
+    const onPop=async(e)=>{
+      // guard가 사라졌다 = 뒤로가기 발생
+      const handled = contentGoBackRef.current && contentGoBackRef.current();
+      if(!handled){
+        if(mobileViewRef.current==="content"){
+          // 콘텐츠 → 목록
+          setMobileView("list");
+          mobileViewRef.current="list";
+          history.pushState({level:"guard"},"");
+        } else {
+          // 목록 화면 = 앱 최상위 → 종료 확인
+          const exit = await useConfirm("앱을 종료하시겠습니까?");
+          if(exit){
+            history.back();
+          } else {
+            history.pushState({level:"guard"},"");
+          }
+        }
+      } else {
+        // ContentPanel이 처리 → guard 유지
+        history.pushState({level:"guard"},"");
+      }
+    };
+
+    window.addEventListener("popstate",onPop);
+    return()=>{
+      window.removeEventListener("popstate",onPop);
+    };
+  },[]);
+  return(
+    <div className="layout-shell">
+      <ConfirmDialog msg={confirmState.msg} onYes={confirmState.onYes} onNo={confirmState.onNo}/>
+      <div className="topbar">
+        <div style={{display:"flex",alignItems:"center",gap:"6px",minWidth:0,flex:1}}>
+          {!isTablet&&mobileView==="content"&&(
+            <button onClick={()=>setMobileViewSync("list")} style={{background:"none",border:"none",padding:"6px 6px 6px 0",color:"#475569",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}><IcoBack/></button>
+          )}
+          {!isTablet&&mobileView==="content"&&patient?(
+            <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{patient.id} {patient.name}</span>
+          ):(
+            <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b"}}>환자 평가 관리</span>
+          )}
+        </div>
+      </div>
+      <div className="main-area">
+        <div className="panel-left" style={!isTablet&&mobileView==="content"?{display:"none"}:{}}>
+          <PatientListPanel db={db} persist={persist} selectedPatient={patient} onSelect={selectPatient} useConfirm={useConfirm}/>
+        </div>
+        <div className="panel-right" style={!isTablet&&mobileView==="list"?{display:"none"}:{display:"block",flex:1,overflow:"hidden"}}>
+          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={()=>setMobileViewSync("list")} goBackRef={contentGoBackRef} useConfirm={useConfirm}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,useConfirm}){
+  const todayStr=new Date().toISOString().slice(0,10);
+  const buildInit=()=>{
+    const init={};
+    (template?.fields||[]).forEach(f=>{
+      if(f.type==="table") init[f.id]=f.rows.map(row=>({left:"",right:row.length>=3?"":undefined,score:row.length<3?"":undefined}));
+      else if(f.type==="mmt_table") init[f.id]=f.rows.map(()=>({left:"",right:""}));
+      else if(f.type==="mmt_sections") init[f.id]={};
+      else if(f.type==="bbs_full") init[f.id]=BBS_ITEMS.map(()=>null);
+      else if(f.type==="fga_full") init[f.id]=FGA_ITEMS.map(()=>null);
+      else if(f.type==="fogq_full") init[f.id]=FOGQ_ITEMS.map(()=>null);
+      else if(f.type==="rom_table") init[f.id]={};
+      else if(f.type==="date") init[f.id]=todayStr;
+      else if(f.type==="toggle") init[f.id]=f.options?.[0]||"";
+      else init[f.id]="";
+    });
+    return init;
+  };
+  const [fd,setFd]=useState(()=>initialData?JSON.parse(JSON.stringify(initialData)):buildInit());
+  const [isDirty,setIsDirty]=useState(false);
+  const markDirty=()=>{ setIsDirty(true); if(dirtyRef) dirtyRef.current=true; };
+  const setF=(id,val)=>{markDirty();setFd(prev=>({...prev,[id]:val}));};
+  const setCell=(tid,ri,ck,val)=>{markDirty();setFd(prev=>{const arr=[...(prev[tid]||[])];arr[ri]={...arr[ri],[ck]:val};return{...prev,[tid]:arr};});};
+  const setBbs=(ri,score)=>{markDirty();setFd(prev=>{const arr=[...(prev["_bbs"]||BBS_ITEMS.map(()=>null))];arr[ri]=score;return{...prev,"_bbs":arr};});};
+  const setFga=(ri,score)=>{markDirty();setFd(prev=>{const arr=[...(prev["_fga"]||FGA_ITEMS.map(()=>null))];arr[ri]=score;return{...prev,"_fga":arr};});};
+  const setFogq=(ri,score)=>{markDirty();setFd(prev=>{const arr=[...(prev["_fogq"]||FOGQ_ITEMS.map(()=>null))];arr[ri]=score;return{...prev,"_fogq":arr};});};
+
+  // 타이머 상태: {trial1: {running, startTime, elapsed}, ...}
+  const [timers,setTimers]=useState({trial1:{running:false,elapsed:0},trial2:{running:false,elapsed:0},trial3:{running:false,elapsed:0}});
+  const timerRefs=React.useRef({});
+
+  const startTimer=(id)=>{
+    const startTime=Date.now()-((timers[id]?.elapsed||0)*1000);
+    timerRefs.current[id]=setInterval(()=>{
+      const elapsed=(Date.now()-startTime)/1000;
+      setTimers(prev=>({...prev,[id]:{...prev[id],running:true,elapsed}}));
+    },50);
+    setTimers(prev=>({...prev,[id]:{...prev[id],running:true}}));
+  };
+
+  const stopTimer=(id)=>{
+    clearInterval(timerRefs.current[id]);
+    setTimers(prev=>{
+      const elapsed=prev[id].elapsed;
+      const val=elapsed.toFixed(2);
+      markDirty();
+      setFd(p=>({...p,[id]:val}));
+      return {...prev,[id]:{running:false,elapsed}};
+    });
+  };
+
+  const resetTimer=(id)=>{
+    clearInterval(timerRefs.current[id]);
+    setTimers(prev=>({...prev,[id]:{running:false,elapsed:0}}));
+    setF(id,"");
+  };
+
+  useEffect(()=>{
+    return()=>{Object.values(timerRefs.current).forEach(t=>clearInterval(t));};
+  },[]);
+
+  // 10mWT 자동계산
+  useEffect(()=>{
+    if(template?.fields?.find(f=>f.id==="avg"&&f.type==="number_auto")){
+      const vals=["trial1","trial2","trial3"].map(k=>parseFloat(fd[k])).filter(v=>!isNaN(v));
+      if(vals.length>0){
+        const avg=(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2);
+        const speed=(10/parseFloat(avg)).toFixed(3);
+        setFd(prev=>({...prev,avg,speed}));
+      } else {
+        setFd(prev=>({...prev,avg:"",speed:""}));
+      }
+    }
+  },[fd.trial1,fd.trial2,fd.trial3]);
+
+  const isTestFailure = fd["test_failure"] === "Test failure";
+  const FAILURE_DISABLED = ["speed_type","trial1","trial2","trial3","avg","speed","assistive"];
+
+  const handleSave=()=>{
+    const final={...fd};
+    if(template?.fields?.find(f=>f.type==="bbs_full")){
+      final.bbs_total=(fd["_bbs"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+    }
+    if(template?.fields?.find(f=>f.type==="fga_full")){
+      final.fga_total=(fd["_fga"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+    }
+    if(template?.fields?.find(f=>f.type==="fogq_full")){
+      final.fogq_total=(fd["_fogq"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+    }
+    setIsDirty(false);
+    if(dirtyRef) dirtyRef.current=false;
+    onSave(final);
+  };
+
+  // saveRef에 handleSave 항상 최신으로 등록
+  useEffect(()=>{ if(saveRef) saveRef.current=handleSave; },[fd,isDirty]);
+
+  const handleCancel=async()=>{
+    if(isDirty){
+      const ans=await useConfirm("저장하지 않은 변경사항이 있습니다.\n저장하시겠습니까?");
+      if(ans){ handleSave(); return; }
+    }
+    onCancel();
+  };
+
+  return(
+    <div>
+    {/* 상단 고정 저장 바 */}
+    <div style={{position:"sticky",top:0,zIndex:50,background:"#fff",borderBottom:"1.5px solid #e2e8f0",padding:"8px 12px",display:"flex",gap:"8px",boxShadow:"0 2px 6px rgba(0,0,0,0.06)",marginBottom:"8px"}}>
+      <button style={{flex:1,background:col.accent,color:"#fff",border:"none",borderRadius:"10px",padding:"10px",fontSize:"14px",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}
+        onClick={handleSave}>
+        {isDirty&&<span style={{width:"7px",height:"7px",borderRadius:"50%",background:"rgba(255,255,255,0.75)",display:"inline-block",flexShrink:0}}/>}
+        저장
+      </button>
+      <button style={{background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"10px 18px",fontSize:"14px",cursor:"pointer"}} onClick={handleCancel}>취소</button>
+    </div>
+    <div style={S.formCard}>
+      {(template?.fields||[]).map(field=>{
+        const disabled = isTestFailure && FAILURE_DISABLED.includes(field.id);
+
+        if(field.type==="fac_select"){
+          const sel=fd[field.id]??"";
+          return(
+            <div key={field.id} style={S.fieldRow}>
+              <label style={S.fieldLabel}>{field.label}</label>
+              {/* 라디오 점수 선택 행 */}
+              <div style={{display:"flex",gap:"6px",flexWrap:"wrap",marginBottom:"10px",padding:"10px 12px",background:"#f8fafc",borderRadius:"8px",border:"1.5px solid #e2e8f0"}}>
+                {field.rows.map(([val])=>{
+                  const on=sel===val;
+                  return(
+                    <div key={val} onClick={()=>{setF(field.id,val);if(field.linkedTo)setF(field.linkedTo,val);}}
+                      style={{display:"flex",alignItems:"center",gap:"5px",cursor:"pointer",padding:"4px 8px",borderRadius:"6px",background:on?col.bg:"transparent"}}>
+                      <div style={{width:"16px",height:"16px",borderRadius:"50%",border:`2px solid ${on?col.accent:"#94a3b8"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        {on&&<div style={{width:"8px",height:"8px",borderRadius:"50%",background:col.accent}}/>}
+                      </div>
+                      <span style={{fontSize:"13px",fontWeight:on?700:400,color:on?col.accent:"#475569"}}>{val}점</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* 표 */}
+              <div style={{...S.tblSection,marginBottom:0}}>
+                <table style={{...S.table,marginBottom:0}}>
+                  <tbody>
+                    {field.rows.map(([val,desc])=>{
+                      const on=sel===val;
+                      return(
+                        <tr key={val} onClick={()=>{setF(field.id,val);if(field.linkedTo)setF(field.linkedTo,val);}}
+                          style={{cursor:"pointer",background:on?col.bg:"white",transition:"background 0.1s"}}>
+                          <td style={{...S.td,width:"64px",textAlign:"center",fontWeight:800,fontSize:"13px",color:on?col.accent:"#475569",borderRight:"1.5px solid #e2e8f0",whiteSpace:"nowrap"}}>FAC {val}</td>
+                          <td style={{...S.td,fontSize:"12px",lineHeight:1.7,color:on?col.text:"#334155",whiteSpace:"pre-line"}}>{desc}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="rom_table"){
+          const romData=fd["_rom"]||{};
+          const setRom=(si,ri,side,val)=>setFd(prev=>{
+            const d={...(prev["_rom"]||{})};
+            const key=si+"_"+ri;
+            d[key]={...(d[key]||{}),[side]:val};
+            return{...prev,"_rom":d};
+          });
+          const appendHyphen=(si,ri,side)=>{
+            const key=si+"_"+ri;
+            const cur=romData[key]?.[side]||"";
+            setRom(si,ri,side,cur+"-");
+          };
+          return(
+            <div key={field.id} style={{marginBottom:"8px"}}>
+              {ROM_SECTIONS.map((sec,si)=>(
+                <div key={si} style={{...S.tblSection,marginBottom:"10px"}}>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{...S.table,marginBottom:0,tableLayout:"fixed"}}>
+                      <thead><tr>
+                        <th style={{...S.th,width:"36%",textAlign:"center"}}>Right</th>
+                        <th style={{...S.th,width:"28%",textAlign:"center",background:"#e8f4fd",color:"#1a5f8a"}}>{sec.title}</th>
+                        <th style={{...S.th,width:"36%",textAlign:"center"}}>Left</th>
+                      </tr></thead>
+                      <tbody>
+                        {sec.rows.map((row,ri)=>{
+                          const key=si+"_"+ri;
+                          return(
+                            <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                              <td style={{...S.td,textAlign:"center"}}>
+                                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"3px"}}>
+                                  <input style={S.cellInput} inputMode="decimal" value={romData[key]?.right||""} onChange={e=>setRom(si,ri,"right",e.target.value.replace(/[^0-9().+\-]/g,""))} placeholder="°"/>
+                                  <button onTouchStart={e=>e.preventDefault()} onMouseDown={e=>{e.preventDefault();appendHyphen(si,ri,"right");}} style={{flexShrink:0,width:"22px",height:"32px",border:"1.5px solid #cbd5e1",borderRadius:"5px",background:"#f8fafc",color:"#475569",fontSize:"14px",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>-</button>
+                                </div>
+                              </td>
+                              <td style={{...S.td,fontSize:"11px",color:"#475569",textAlign:"center",wordBreak:"break-word",lineHeight:1.4}}>{row}</td>
+                              <td style={{...S.td,textAlign:"center"}}>
+                                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"3px"}}>
+                                  <input style={S.cellInput} inputMode="decimal" value={romData[key]?.left||""} onChange={e=>setRom(si,ri,"left",e.target.value.replace(/[^0-9().+\-]/g,""))} placeholder="°"/>
+                                  <button onTouchStart={e=>e.preventDefault()} onMouseDown={e=>{e.preventDefault();appendHyphen(si,ri,"left");}} style={{flexShrink:0,width:"22px",height:"32px",border:"1.5px solid #cbd5e1",borderRadius:"5px",background:"#f8fafc",color:"#475569",fontSize:"14px",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>-</button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        if(field.type==="mmt_sections"){
+          const md=fd["_mmt"]||{};
+          const setMmt=(gi,si,ri,side,val)=>setFd(prev=>{
+            const d={...(prev["_mmt"]||{})};
+            const key=gi+"_"+si+"_"+ri;
+            d[key]={...(d[key]||{left:"",right:""}),[side]:val};
+            return{...prev,"_mmt":d};
+          });
+          // 그룹 전체 일괄 적용
+          const applyAll=(gi,side,val)=>{
+            markDirty();
+            setFd(prev=>{
+              const d={...(prev["_mmt"]||{})};
+              const grp=MMT_SECTIONS[gi];
+              grp.sections.forEach((sec,si)=>{
+                sec.rows.forEach((_,ri)=>{
+                  const key=gi+"_"+si+"_"+ri;
+                  d[key]={...(d[key]||{left:"",right:""}),[side]:val};
+                });
+              });
+              return{...prev,"_mmt":d};
+            });
+          };
+          const btnStyle=(color)=>({border:`1.5px solid ${color}`,borderRadius:"7px",padding:"5px 10px",fontSize:"11px",fontWeight:700,cursor:"pointer",background:"#fff",color:color,whiteSpace:"nowrap"});
+          return(
+            <div key={field.id} style={{marginBottom:"8px"}}>
+              {/* 일괄 적용 버튼 */}
+              <div style={{display:"flex",gap:"8px",marginBottom:"12px",padding:"10px 12px",background:"#fef9f0",borderRadius:"10px",border:"1.5px solid #fcd34d"}}>
+                <span style={{fontSize:"11px",fontWeight:700,color:"#92400e",flexShrink:0,alignSelf:"center"}}>일괄<br/>적용</span>
+                {/* 우측 */}
+                <div style={{flex:1}}>
+                  <div style={{fontSize:"10px",fontWeight:700,color:"#94a3b8",textAlign:"center",marginBottom:"4px"}}>Right</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+                    {[["상지","5",0],["상지","1",0],["하지","5",1],["하지","1",1]].map(([label,val,gi])=>(
+                      <button key={`r-${gi}-${val}`} style={{border:`1.5px solid ${val==="5"?"#e8961e":"#94a3b8"}`,borderRadius:"6px",padding:"4px 0",fontSize:"10px",fontWeight:700,cursor:"pointer",background:"#fff",color:val==="5"?"#e8961e":"#64748b",width:"100%"}}
+                        onClick={()=>applyAll(gi,"right",val)}>{label} {val}</button>
+                    ))}
+                  </div>
+                </div>
+                {/* 좌측 */}
+                <div style={{flex:1}}>
+                  <div style={{fontSize:"10px",fontWeight:700,color:"#94a3b8",textAlign:"center",marginBottom:"4px"}}>Left</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+                    {[["상지","5",0],["상지","1",0],["하지","5",1],["하지","1",1]].map(([label,val,gi])=>(
+                      <button key={`l-${gi}-${val}`} style={{border:`1.5px solid ${val==="5"?"#e8961e":"#94a3b8"}`,borderRadius:"6px",padding:"4px 0",fontSize:"10px",fontWeight:700,cursor:"pointer",background:"#fff",color:val==="5"?"#e8961e":"#64748b",width:"100%"}}
+                        onClick={()=>applyAll(gi,"left",val)}>{label} {val}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {MMT_SECTIONS.map((grp,gi)=>(
+                <div key={gi} style={{marginBottom:"14px"}}>
+                  <div style={{fontSize:"12px",fontWeight:800,color:"#7a4d0a",background:"#fef3e2",padding:"7px 12px",borderRadius:"8px 8px 0 0",border:"1.5px solid #e8961e",borderBottom:"none",letterSpacing:"0.5px"}}>{grp.group}</div>
+                  <div style={{border:"1.5px solid #e8961e",borderRadius:"0 0 8px 8px",overflow:"hidden"}}>
+                    {grp.sections.map((sec,si)=>(
+                      <table key={si} style={{...S.table,marginBottom:0,tableLayout:"fixed"}}>
+                        <thead><tr>
+                          <th style={{...S.th,width:"30%",background:"#fef9f0",color:"#7a4d0a",textAlign:"center",wordBreak:"break-word",fontSize:"11px"}}>{sec.title}</th>
+                          <th style={{...S.th,width:"35%",textAlign:"center"}}>Right</th>
+                          <th style={{...S.th,width:"35%",textAlign:"center"}}>Left</th>
+                        </tr></thead>
+                        <tbody>
+                          {sec.rows.map((row,ri)=>{
+                            const key=gi+"_"+si+"_"+ri;
+                            return(
+                              <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                                <td style={{...S.td,fontSize:"11px",paddingLeft:"10px",wordBreak:"break-word",lineHeight:1.4,color:"#475569"}}>{row}</td>
+                                <td style={{...S.td,textAlign:"center"}}>
+                                  <MmtSelect value={md[key]?.right??""} onChange={v=>{markDirty();setMmt(gi,si,ri,"right",v);}}/>
+                                </td>
+                                <td style={{...S.td,textAlign:"center"}}>
+                                  <MmtSelect value={md[key]?.left??""} onChange={v=>{markDirty();setMmt(gi,si,ri,"left",v);}}/>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        if(field.type==="mmt_table"){
+          const td=fd[field.id]||field.rows.map(()=>({left:"",right:""}));
+          return(
+            <div key={field.id} style={S.tblSection}>
+              <div style={{overflowX:"auto"}}>
+                <table style={{...S.table,marginBottom:0}}>
+                  <thead><tr>
+                    <th style={S.th}>부위</th><th style={S.th}>근육/운동</th>
+                    <th style={{...S.th,textAlign:"center"}}>좌측</th>
+                    <th style={{...S.th,textAlign:"center"}}>우측</th>
+                  </tr></thead>
+                  <tbody>
+                    {field.rows.map((row,ri)=>(
+                      <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                        <td style={S.td}>{row[0]}</td><td style={S.td}>{row[1]}</td>
+                        <td style={{...S.td,textAlign:"center"}}>
+                          <MmtSelect value={td[ri]?.left??""} onChange={v=>setCell(field.id,ri,"left",v)}/>
+                        </td>
+                        <td style={{...S.td,textAlign:"center"}}>
+                          <MmtSelect value={td[ri]?.right??""} onChange={v=>setCell(field.id,ri,"right",v)}/>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        }
+
+        if(field.type==="bbs_full"){
+          const scores=fd["_bbs"]||BBS_ITEMS.map(()=>null);
+          const total=scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          return(
+            <div key={field.id}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px",padding:"12px 16px",background:"#f3eeff",borderRadius:"10px",border:"1.5px solid #8b5cf6"}}>
+                <span style={{fontSize:"13px",fontWeight:700,color:"#4c1d95"}}>BBS 총점</span>
+                <span style={{fontSize:"24px",fontWeight:800,color:"#8b5cf6"}}>{total} <span style={{fontSize:"14px",color:"#94a3b8",fontWeight:400}}>/ 56</span></span>
+              </div>
+              {BBS_ITEMS.map((item,ri)=>{
+                const selected=scores[ri];
+                return(
+                  <div key={ri} style={{marginBottom:"20px"}}>
+                    <div style={{fontSize:"15px",fontWeight:800,color:"#3b1d8a",marginBottom:"8px",padding:"8px 12px",background:"#ede9ff",borderRadius:"8px",borderLeft:"4px solid #8b5cf6",lineHeight:1.4}}>{item.label}</div>
+                    {item.opts.map(([score,desc])=>{
+                      const on=selected===score;
+                      return(
+                        <div key={score} className={`bbs-opt${on?" on":""}`} onClick={()=>setBbs(ri,score)}>
+                          <span className="bbs-badge">{score}</span>
+                          <span style={{fontSize:"11px",lineHeight:1.5,color:on?"#4c1d95":"#64748b",fontWeight:on?600:400}}>{desc}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        }
+
+        if(field.type==="fga_full"){
+          const scores=fd["_fga"]||FGA_ITEMS.map(()=>null);
+          const total=scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          const accent="#16a34a"; const bg="#f0fdf4"; const border="#16a34a"; const dark="#14532d";
+          return(
+            <div key={field.id}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px",padding:"12px 16px",background:bg,borderRadius:"10px",border:`1.5px solid ${border}`}}>
+                <span style={{fontSize:"13px",fontWeight:700,color:dark}}>FGA 총점</span>
+                <span style={{fontSize:"24px",fontWeight:800,color:accent}}>{total} <span style={{fontSize:"14px",color:"#94a3b8",fontWeight:400}}>/ 30</span></span>
+              </div>
+              {FGA_ITEMS.map((item,ri)=>{
+                const selected=scores[ri];
+                return(
+                  <div key={ri} style={{marginBottom:"20px"}}>
+                    <div style={{fontSize:"15px",fontWeight:800,color:dark,marginBottom:"4px",padding:"8px 12px",background:"#dcfce7",borderRadius:"8px",borderLeft:`4px solid ${accent}`,lineHeight:1.4}}>{item.label}</div>
+                    <div style={{fontSize:"11px",color:"#475569",padding:"5px 12px 8px",background:"#f8fafc",borderRadius:"6px",marginBottom:"6px",lineHeight:1.6}}>{item.instruction}</div>
+                    {item.opts.map(([score,desc])=>{
+                      const on=selected===score;
+                      return(
+                        <div key={score} onClick={()=>setFga(ri,score)}
+                          style={{display:"flex",alignItems:"flex-start",gap:"10px",padding:"9px 12px",borderRadius:"8px",border:`1.5px solid ${on?border:"#e2e8f0"}`,cursor:"pointer",marginBottom:"5px",background:"#fff"}}>
+                          <span style={{minWidth:"24px",height:"24px",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:"12px",flexShrink:0,marginTop:"1px",
+                            background:on?accent:"#fff",color:on?"#fff":"#94a3b8",border:`1.5px solid ${on?accent:"#cbd5e1"}`}}>{score}</span>
+                          <span style={{fontSize:"11px",lineHeight:1.5,color:on?dark:"#64748b",fontWeight:on?600:400}}>{desc}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        }
+
+        if(field.type==="fogq_full"){
+          const scores=fd["_fogq"]||FOGQ_ITEMS.map(()=>null);
+          const total=scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          const accent="#f97316"; const bg="#fef3f2"; const border="#f97316"; const dark="#7c2d12";
+          return(
+            <div key={field.id}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px",padding:"12px 16px",background:bg,borderRadius:"10px",border:`1.5px solid ${border}`}}>
+                <span style={{fontSize:"13px",fontWeight:700,color:dark}}>FOG-Q 총점</span>
+                <span style={{fontSize:"24px",fontWeight:800,color:accent}}>{total} <span style={{fontSize:"14px",color:"#94a3b8",fontWeight:400}}>/ 24</span></span>
+              </div>
+              {FOGQ_ITEMS.map((item,ri)=>{
+                const selected=scores[ri];
+                return(
+                  <div key={ri} style={{marginBottom:"20px"}}>
+                    <div style={{fontSize:"15px",fontWeight:800,color:dark,marginBottom:"6px",padding:"8px 12px",background:"#ffedd5",borderRadius:"8px",borderLeft:`4px solid ${accent}`,lineHeight:1.5}}>{item.label}</div>
+                    {item.opts.map(([score,desc])=>{
+                      const on=selected===score;
+                      return(
+                        <div key={score} onClick={()=>setFogq(ri,score)}
+                          style={{display:"flex",alignItems:"flex-start",gap:"10px",padding:"9px 12px",borderRadius:"8px",border:`1.5px solid ${on?border:"#e2e8f0"}`,cursor:"pointer",marginBottom:"5px",background:"#fff"}}>
+                          <span style={{minWidth:"24px",height:"24px",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:"12px",flexShrink:0,marginTop:"1px",
+                            background:on?accent:"#fff",color:on?"#fff":"#94a3b8",border:`1.5px solid ${on?accent:"#cbd5e1"}`}}>{score}</span>
+                          <span style={{fontSize:"11px",lineHeight:1.5,color:on?dark:"#64748b",fontWeight:on?600:400}}>{desc}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        }
+
+        if(field.type==="table"){
+          const td=fd[field.id]||[],two=field.headers.length>=4,one=field.headers.length===3;
+          return(
+            <div key={field.id} style={S.tblSection}><div style={{overflowX:"auto"}}>
+              <table style={{...S.table,marginBottom:0}}>
+                <thead><tr>{field.headers.map((h,i)=><th key={i} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {field.rows.map((row,ri)=>(
+                    <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
+                      {row.map((cell,ci)=><td key={ci} style={S.td}>{cell}</td>)}
+                      {two&&<><td style={S.td}><input style={S.cellInput} value={td[ri]?.left??""} onChange={e=>setCell(field.id,ri,"left",e.target.value)}/></td><td style={S.td}><input style={S.cellInput} value={td[ri]?.right??""} onChange={e=>setCell(field.id,ri,"right",e.target.value)}/></td></>}
+                      {one&&!two&&<td style={S.td}><input style={S.cellInput} value={td[ri]?.score??""} onChange={e=>setCell(field.id,ri,"score",e.target.value)}/></td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div></div>
+          );
+        }
+
+        if(field.type==="number_auto"){
+          return(
+            <div key={field.id} style={S.fieldRow}>
+              <label style={S.fieldLabel}>{field.label} <span style={{color:"#3b9ede",fontSize:"10px",fontWeight:600,marginLeft:"4px"}}>● 자동계산</span></label>
+              <input style={S.inputAuto} type="text" readOnly value={fd[field.id]||""} placeholder={field.placeholder}/>
+            </div>
+          );
+        }
+
+        const isTrialField = ["trial1","trial2","trial3"].includes(field.id);
+
+        if(isTrialField){
+          const tm=timers[field.id]||{running:false,elapsed:0};
+          const display=tm.running
+            ? tm.elapsed.toFixed(2)
+            : (fd[field.id]||"");
+          return(
+            <div key={field.id} style={{...S.fieldRow, opacity: disabled ? 0.35 : 1, pointerEvents: disabled ? "none" : "auto"}}>
+              <label style={S.fieldLabel}>{field.label}</label>
+              <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                <input style={{...S.input, fontVariantNumeric:"tabular-nums", color: tm.running?"#2563eb":"#1e293b", fontWeight: tm.running?700:400}}
+                  type="text" inputMode="decimal"
+                  placeholder={field.placeholder}
+                  value={display}
+                  onChange={e=>{if(!tm.running)setF(field.id,e.target.value);}}
+                  readOnly={tm.running}
+                />
+                {!tm.running?(
+                  <button onClick={()=>startTimer(field.id)}
+                    style={{flexShrink:0,height:"42px",padding:"0 14px",borderRadius:"9px",border:`1.5px solid ${col.accent}`,background:col.bg,color:col.accent,fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    ▶ 시작
+                  </button>
+                ):(
+                  <button onClick={()=>stopTimer(field.id)}
+                    style={{flexShrink:0,height:"42px",padding:"0 14px",borderRadius:"9px",border:"1.5px solid #ef4444",background:"#fef2f2",color:"#ef4444",fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    ■ 정지
+                  </button>
+                )}
+                {(fd[field.id]||tm.elapsed>0)&&!tm.running&&(
+                  <button onClick={()=>resetTimer(field.id)}
+                    style={{flexShrink:0,height:"42px",padding:"0 10px",borderRadius:"9px",border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#94a3b8",fontSize:"12px",cursor:"pointer"}}>
+                    ↺
+                  </button>
+                )}
+              </div>
+              {tm.running&&(
+                <div style={{fontSize:"28px",fontWeight:800,color:"#2563eb",fontVariantNumeric:"tabular-nums",letterSpacing:"1px",marginTop:"4px"}}>
+                  {tm.elapsed.toFixed(2)} <span style={{fontSize:"13px",fontWeight:400,color:"#94a3b8"}}>초</span>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        return(
+          <div key={field.id} style={{...S.fieldRow, opacity: disabled ? 0.35 : 1, pointerEvents: disabled ? "none" : "auto"}}>
+            <label style={S.fieldLabel}>{field.label}</label>
+            {field.type==="toggle"?(
+              <div style={{display:"flex",gap:"7px",flexWrap:"wrap"}}>
+                {field.options.map(opt=>{
+                  const on=fd[field.id]===opt;
+                  const isFailureOpt = field.id==="test_failure" && opt==="Test failure";
+                  const activeColor = isFailureOpt ? "#ef4444" : col.accent;
+                  return <button key={opt} onClick={()=>setF(field.id,opt)} style={{border:`1.5px solid ${on?activeColor:"#cbd5e1"}`,borderRadius:"9px",padding:"8px 16px",fontSize:"14px",cursor:"pointer",background:on?activeColor:"#fff",color:on?"#fff":"#475569",fontWeight:on?700:400}}>{opt}</button>;
+                })}
+              </div>
+            ):field.type==="textarea"?(
+              <textarea style={S.textarea} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
+            ):(
+              <input style={S.input} type="text" inputMode={field.inputMode||(field.type==="number"?"decimal":undefined)} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
+            )}
+          </div>
+        );
+      })}
+    </div>
+    <div style={{display:"flex",gap:"8px"}}>
+      <button style={{background:col.accent,color:"#fff",border:"none",borderRadius:"10px",padding:"11px 26px",fontSize:"14px",fontWeight:700,cursor:"pointer"}} onClick={handleSave}>저장</button>
+      <button style={{background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px 18px",fontSize:"14px",cursor:"pointer"}} onClick={handleCancel}>취소</button>
+    </div></div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
