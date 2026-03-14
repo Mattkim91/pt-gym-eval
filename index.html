@@ -21,6 +21,7 @@
             localStorage.setItem('pt_eval_backup_latest', data);
             const today=new Date().toISOString().slice(0,10);
             localStorage.setItem('pt_eval_backup_date', today);
+            localStorage.setItem('pt_eval_backup_time', new Date().toISOString());
           }
           window.location.reload();
         } else {
@@ -32,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v3.28</title>
+  <title>환자 평가 관리 v5.1</title>
   <link rel="manifest" href="manifest.json" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -367,6 +368,8 @@ const DEFAULT_TEMPLATES = {
       { id:"avg", label:"평균 (초)", type:"number_auto", placeholder:"자동계산" },
       { id:"speed", label:"속도 (m/s)", type:"number_auto", placeholder:"자동계산" },
       { id:"assistive", label:"보조도구", type:"text", placeholder:"예: 지팡이, 워커, 없음" },
+      { id:"orthosis", label:"Orthosis", type:"text", placeholder:"예: AFO, KAFO, 없음" },
+      { id:"assist_level", label:"Assist Level", type:"text", placeholder:"예: Independent, Min A, Mod A" },
       { id:"note", label:"비고", type:"textarea", placeholder:"특이사항 기록" },
     ],
   },
@@ -428,7 +431,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v3.28";
+const APP_VERSION = "v5.1";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -469,6 +472,7 @@ function saveData(d){
   localStorage.setItem("pt_eval_data",payload);
   // 저장 시마다 최신 백업 갱신
   localStorage.setItem("pt_eval_backup_latest",payload);
+  localStorage.setItem("pt_eval_backup_time",new Date().toISOString());
 }
 
 function autoBackupOnOpen(){
@@ -485,6 +489,7 @@ function autoBackupOnOpen(){
     // 오늘 데이터 latest에 저장
     localStorage.setItem("pt_eval_backup_latest",data);
     localStorage.setItem("pt_eval_backup_date",today);
+    localStorage.setItem("pt_eval_backup_time",new Date().toISOString());
   }catch{}
 }
 
@@ -531,7 +536,7 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
   const [editName,setEditName]=useState("");
   const [backupMsg,setBackupMsg]=useState("");
   const [sortKey,setSortKey]=useState("date");   // "date"|"id"|"name"
-  const [sortAsc,setSortAsc]=useState(true);     // true=오름차순(오래된순), false=내림차순(최신순)
+  const [sortAsc,setSortAsc]=useState(false);    // true=오름차순(오래된순), false=내림차순(최신순)
   const fileInputRef=React.useRef(null);
   const scrollRef=React.useRef(null);
   const [idErrMsg,setIdErrMsg]=useState("");
@@ -542,7 +547,7 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
     idErrTimer.current=setTimeout(()=>setIdErrMsg(""),2500);
   };
   useEffect(()=>{
-    if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
+    
   },[]);
   useEffect(()=>{
     if(search&&scrollRef.current) scrollRef.current.scrollTop=0;
@@ -641,13 +646,13 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
 
   const genId=()=>{
     let n=1;
-    while(db.patients.find(p=>p.id==="새ID"+n)) n++;
-    return "새ID"+n;
+    while(db.patients.find(p=>p.id==="#"+n)) n++;
+    return "#"+n;
   };
   const genName=()=>{
     let n=1;
-    while(db.patients.find(p=>p.name==="새 환자"+n)) n++;
-    return "새 환자"+n;
+    while(db.patients.find(p=>p.name==="신환"+n)) n++;
+    return "신환"+n;
   };
   const addPt=()=>{
     const id=(newId.trim()||genId());
@@ -768,8 +773,8 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
                   <span style={{fontSize:"11px",color:"#94a3b8"}}>{total}건</span>
                 </div>
                 <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"2px",display:"flex",flexDirection:"column",gap:"1px"}}>
-                  {p.createdAt&&<span>최초생성일 {new Date(p.createdAt).toLocaleDateString("ko-KR",{year:"2-digit",month:"2-digit",day:"2-digit"})}</span>}
-                  {latestSavedAt>0&&<span>최근수정 {new Date(latestSavedAt).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})} {new Date(latestSavedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}</span>}
+                  {p.createdAt&&<span>최초생성일시 {new Date(p.createdAt).toLocaleDateString("ko-KR",{year:"2-digit",month:"2-digit",day:"2-digit"})} {new Date(p.createdAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}</span>}
+                  {latestSavedAt>0&&<span>최근수정일시 {new Date(latestSavedAt).toLocaleDateString("ko-KR",{year:"2-digit",month:"2-digit",day:"2-digit"})} {new Date(latestSavedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}</span>}
                 </div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:"6px",flexShrink:0}}>
@@ -1343,6 +1348,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
   const [rv,setRv]=useState("eval-select");
   const [ek,setEk]=useState(null);
   const [editRec,setEditRec]=useState(null);
+  const [scoreDisplay,setScoreDisplay]=useState(null); // {label, value, max, accent, bg, border}
   const evalFormDirtyRef=React.useRef(false); // EvalForm의 isDirty를 공유
   const evalFormSaveRef=React.useRef(null);   // EvalForm의 save 함수
   useEffect(()=>{setRv("eval-select");setEk(null);setEditRec(null);setTab("item");evalFormDirtyRef.current=false;},[patient?.id]);
@@ -1393,7 +1399,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
   const crumb=()=>{
     if(!patient) return null;
     const col=ek?EVAL_COLORS[ek]:null;
-    const base=<span style={{fontWeight:700,color:"#1e293b"}}>{patient.id} {patient.name}</span>;
+    const base=<span style={{fontWeight:700,color:"#1e293b"}}>{patient.name}</span>;
     if(ek&&rv==="eval-form") return(
       <span style={{display:"flex",alignItems:"center",gap:"5px",flexWrap:"nowrap"}}>
         {base}
@@ -1433,7 +1439,13 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
           {showBack&&<button onClick={goBack} style={{background:"none",border:"none",padding:"4px 4px 4px 0",color:"#475569",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}><IcoBack/></button>}
           <div style={{display:"flex",alignItems:"center",gap:"5px",overflow:"hidden",minWidth:0}}>{crumb()}</div>
         </div>
-
+        {rv==="eval-form"&&scoreDisplay&&(
+          <div style={{display:"inline-flex",alignItems:"center",gap:"5px",padding:"4px 11px",background:scoreDisplay.bg,borderRadius:"20px",border:`1.5px solid ${scoreDisplay.border}`,flexShrink:0}}>
+            <span style={{fontSize:"11px",fontWeight:700,color:scoreDisplay.accent}}>{scoreDisplay.label}</span>
+            <span style={{fontSize:"15px",fontWeight:800,color:scoreDisplay.accent}}>{scoreDisplay.value}</span>
+            {scoreDisplay.max&&<span style={{fontSize:"11px",color:"#94a3b8",fontWeight:400}}>/ {scoreDisplay.max}</span>}
+          </div>
+        )}
       </div>
 
       {/* 탭 (eval-select 화면에서만 표시) */}
@@ -1540,6 +1552,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
 
         {rv==="eval-form"&&ek&&(
           <EvalForm template={db.templates[ek]} col={EVAL_COLORS[ek]} initialData={editRec?.data||null}
+            onScoreChange={setScoreDisplay}
             dirtyRef={evalFormDirtyRef}
             saveRef={evalFormSaveRef}
             useConfirm={useConfirm}
@@ -1803,7 +1816,7 @@ function App(){
             <button onClick={()=>setMobileViewSync("list")} style={{background:"none",border:"none",padding:"6px 6px 6px 0",color:"#475569",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}><IcoBack/></button>
           )}
           {!isTablet&&mobileView==="content"&&patient?(
-            <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{patient.id} {patient.name}</span>
+            <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{patient.name}</span>
           ):(
             <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b"}}>환자 평가 관리 <span style={{fontSize:"12px",fontWeight:500,color:"#94a3b8"}}>{APP_VERSION}</span></span>
           )}
@@ -1816,12 +1829,14 @@ function App(){
             </div>
             {(()=>{
               const d=localStorage.getItem("pt_eval_backup_date");
-              const t=localStorage.getItem("pt_eval_backup_latest");
+              const bt=localStorage.getItem("pt_eval_backup_time");
               if(!d) return <span style={{fontSize:"9px",color:"#ef4444",fontWeight:600}}>백업 없음</span>;
               const today=new Date().toISOString().slice(0,10);
               const days=Math.floor((new Date(today)-new Date(d))/(1000*60*60*24));
               const color=days>=7?"#ef4444":days>=3?"#f59e0b":"#94a3b8";
-              return <span style={{fontSize:"9px",color,fontWeight:600}}>마지막 백업 {days===0?"오늘":`${days}일 전`}</span>;
+              const timeStr=bt?new Date(bt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}):"";
+              const label=days===0?`오늘 ${timeStr}`.trim():days===1?`어제 ${timeStr}`.trim():`${days}일 전`;
+              return <span style={{fontSize:"9px",color,fontWeight:600}}>마지막 백업 {label}</span>;
             })()}
           </div>
         )}
@@ -1838,7 +1853,7 @@ function App(){
   );
 }
 
-function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,useConfirm}){
+function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,useConfirm,onScoreChange}){
   const todayStr=new Date().toISOString().slice(0,10);
   const buildInit=()=>{
     const init={};
@@ -1913,8 +1928,33 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
     }
   },[fd.trial1,fd.trial2,fd.trial3]);
 
+  // 총점 실시간 계산 → 서브헤더 배지
+  useEffect(()=>{
+    if(!onScoreChange) return;
+    const hasBbs=template?.fields?.some(f=>f.type==="bbs_full");
+    const hasFga=template?.fields?.some(f=>f.type==="fga_full");
+    const hasFogq=template?.fields?.some(f=>f.type==="fogq_full");
+    const hasFac=template?.fields?.some(f=>f.type==="fac_select");
+    if(hasBbs){
+      const total=(fd["_bbs"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+      onScoreChange({label:"총점",value:total,max:56,accent:"#7c3aed",bg:"#f3eeff",border:"#8b5cf6"});
+    } else if(hasFga){
+      const total=(fd["_fga"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+      onScoreChange({label:"총점",value:total,max:30,accent:"#16a34a",bg:"#f0fdf4",border:"#16a34a"});
+    } else if(hasFogq){
+      const total=(fd["_fogq"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+      onScoreChange({label:"총점",value:total,max:24,accent:"#f97316",bg:"#fef3f2",border:"#f97316"});
+    } else if(hasFac){
+      const score=fd["score"]??"";
+      if(score!=="") onScoreChange({label:"FAC",value:score,max:null,accent:"#e53e6d",bg:"#fde8ef",border:"#e53e6d"});
+      else onScoreChange(null);
+    } else {
+      onScoreChange(null);
+    }
+  },[fd]);
+
   const isTestFailure = fd["test_failure"] === "Test failure";
-  const FAILURE_DISABLED = ["speed_type","trial1","trial2","trial3","avg","speed","assistive","steps1","steps2","steps3"];
+  const FAILURE_DISABLED = ["speed_type","trial1","trial2","trial3","avg","speed","assistive","orthosis","assist_level","steps1","steps2","steps3"];
 
   const handleSave=()=>{
     const final={...fd};
@@ -2165,10 +2205,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
           const total=scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
           return(
             <div key={field.id}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px",padding:"12px 16px",background:"#f3eeff",borderRadius:"10px",border:"1.5px solid #8b5cf6"}}>
-                <span style={{fontSize:"13px",fontWeight:700,color:"#4c1d95"}}>BBS 총점</span>
-                <span style={{fontSize:"24px",fontWeight:800,color:"#8b5cf6"}}>{total} <span style={{fontSize:"14px",color:"#94a3b8",fontWeight:400}}>/ 56</span></span>
-              </div>
+
               {BBS_ITEMS.map((item,ri)=>{
                 const selected=scores[ri];
                 return(
@@ -2196,10 +2233,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
           const accent="#16a34a"; const bg="#f0fdf4"; const border="#16a34a"; const dark="#14532d";
           return(
             <div key={field.id}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px",padding:"12px 16px",background:bg,borderRadius:"10px",border:`1.5px solid ${border}`}}>
-                <span style={{fontSize:"13px",fontWeight:700,color:dark}}>FGA 총점</span>
-                <span style={{fontSize:"24px",fontWeight:800,color:accent}}>{total} <span style={{fontSize:"14px",color:"#94a3b8",fontWeight:400}}>/ 30</span></span>
-              </div>
+
               {FGA_ITEMS.map((item,ri)=>{
                 const selected=scores[ri];
                 return(
@@ -2230,10 +2264,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
           const accent="#f97316"; const bg="#fef3f2"; const border="#f97316"; const dark="#7c2d12";
           return(
             <div key={field.id}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px",padding:"12px 16px",background:bg,borderRadius:"10px",border:`1.5px solid ${border}`}}>
-                <span style={{fontSize:"13px",fontWeight:700,color:dark}}>FOG-Q 총점</span>
-                <span style={{fontSize:"24px",fontWeight:800,color:accent}}>{total} <span style={{fontSize:"14px",color:"#94a3b8",fontWeight:400}}>/ 24</span></span>
-              </div>
+
               {FOGQ_ITEMS.map((item,ri)=>{
                 const selected=scores[ri];
                 return(
@@ -2331,6 +2362,32 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
           );
         }
 
+        if(field.type==="date"){
+          const isBBS = template?.fields?.some(f=>f.type==="bbs_full");
+          return(
+            <div key={field.id} style={{...S.fieldRow, opacity: disabled ? 0.35 : 1, pointerEvents: disabled ? "none" : "auto"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px",flexWrap:"wrap"}}>
+                <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                  <label style={S.fieldLabel}>{field.label}</label>
+                  <input style={{border:`1.5px solid ${!fd[field.id]?"#f87171":"#e2e8f0"}`,borderRadius:"9px",padding:"6px 10px",outline:"none",color:"#475569",fontSize:"14px",fontWeight:400,background:"#fff",cursor:"pointer"}} type="date" value={fd[field.id]||""} onChange={e=>{markDirty();setF(field.id,e.target.value);}} required/>
+                </div>
+                {isBBS&&(
+                  <div style={{display:"flex",gap:"6px",flexShrink:0}}>
+                    <button onClick={()=>{markDirty();setFd(prev=>({...prev,"_bbs":BBS_ITEMS.map(item=>item.opts[item.opts.length-1][0])}));}}
+                      style={{padding:"6px 14px",borderRadius:"9px",border:"1.5px solid #fca5a5",background:"#fef2f2",color:"#dc2626",fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                      0점
+                    </button>
+                    <button onClick={()=>{markDirty();setFd(prev=>({...prev,"_bbs":BBS_ITEMS.map(item=>item.opts[0][0])}));}}
+                      style={{padding:"6px 14px",borderRadius:"9px",border:"1.5px solid #93c5fd",background:"#eff6ff",color:"#1d4ed8",fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                      만점 (56점)
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        }
+
         return(
           <div key={field.id} style={{...S.fieldRow, opacity: disabled ? 0.35 : 1, pointerEvents: disabled ? "none" : "auto"}}>
             <label style={S.fieldLabel}>{field.label}</label>
@@ -2354,7 +2411,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
               (field.id==="steps1"||field.id==="steps2"||field.id==="steps3")?(
                 <input style={{border:"1.5px solid #e2e8f0",borderRadius:"8px",padding:"10px 8px",outline:"none",color:"#1e293b",width:"80px",fontSize:"16px",textAlign:"center"}} inputMode="numeric" placeholder="" value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
               ):(
-                <input style={{...S.input,borderColor:field.type==="date"&&!fd[field.id]?"#f87171":field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"#60a5fa":undefined, borderWidth:field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"2px":undefined}} type={field.type==="date"?"date":"text"} inputMode={field.inputMode||(field.type==="number"?"decimal":undefined)} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)} required={field.type==="date"}/>
+                <input style={{...S.input,borderColor:field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"#60a5fa":undefined, borderWidth:field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"2px":undefined}} type="text" inputMode={field.inputMode||(field.type==="number"?"decimal":undefined)} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
               )
             )}
           </div>
