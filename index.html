@@ -32,7 +32,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v3.23</title>
+  <title>환자 평가 관리 v3.24</title>
   <link rel="manifest" href="manifest.json" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -427,7 +427,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v3.23";
+const APP_VERSION = "v3.24";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -543,6 +543,9 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
   useEffect(()=>{
     if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
   },[]);
+  useEffect(()=>{
+    if(search&&scrollRef.current) scrollRef.current.scrollTop=0;
+  },[search]);
   useEffect(()=>{
     const onExport=()=>exportBackup();
     const onImport=()=>fileInputRef.current?.click();
