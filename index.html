@@ -32,7 +32,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v2.16</title>
+  <title>환자 평가 관리 v2.18</title>
   <link rel="manifest" href="manifest.json" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -411,7 +411,7 @@ const DEFAULT_TEMPLATES = {
   },
 };
 
-const APP_VERSION = "v2.16";
+const APP_VERSION = "v2.18";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1671,7 +1671,7 @@ function App(){
   });
   const useConfirmRef=React.useRef(useConfirm);
   useEffect(()=>{ useConfirmRef.current=useConfirm; });
-  useEffect(()=>{ const t=setTimeout(()=>setShowSplash(false),1200); return()=>clearTimeout(t); },[]);
+  useEffect(()=>{ const t=setTimeout(()=>setShowSplash(false),1500); return()=>clearTimeout(t); },[]);
   const selectPatient=p=>{
     setPatient(p);
     if(!isTablet){
@@ -1718,7 +1718,7 @@ function App(){
       <ConfirmDialog msg={confirmState.msg} onYes={confirmState.onYes} onNo={confirmState.onNo}/>
       {showSplash&&(
         <div style={{position:"fixed",inset:0,zIndex:99999,background:"#2563eb",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"12px"}}>
-          <div style={{fontSize:"26px",fontWeight:800,color:"#fff",letterSpacing:"-0.5px"}}>환자평가관리</div>
+          <div style={{fontSize:"28px",fontWeight:800,color:"#fff",letterSpacing:"-0.5px"}}>환자평가관리</div>
           <div style={{fontSize:"14px",fontWeight:500,color:"rgba(255,255,255,0.7)"}}>{APP_VERSION}</div>
         </div>
       )}
