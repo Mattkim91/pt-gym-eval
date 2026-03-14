@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v5.1</title>
+  <title>환자 평가 관리 v5.2</title>
   <link rel="manifest" href="manifest.json" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -431,7 +431,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v5.1";
+const APP_VERSION = "v5.2";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2366,22 +2366,21 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
           const isBBS = template?.fields?.some(f=>f.type==="bbs_full");
           return(
             <div key={field.id} style={{...S.fieldRow, opacity: disabled ? 0.35 : 1, pointerEvents: disabled ? "none" : "auto"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px",flexWrap:"wrap"}}>
-                <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-                  <label style={S.fieldLabel}>{field.label}</label>
-                  <input style={{border:`1.5px solid ${!fd[field.id]?"#f87171":"#e2e8f0"}`,borderRadius:"9px",padding:"6px 10px",outline:"none",color:"#475569",fontSize:"14px",fontWeight:400,background:"#fff",cursor:"pointer"}} type="date" value={fd[field.id]||""} onChange={e=>{markDirty();setF(field.id,e.target.value);}} required/>
-                </div>
+              <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                <label style={S.fieldLabel}>{field.label}</label>
+                <input style={{border:`1.5px solid ${!fd[field.id]?"#f87171":"#e2e8f0"}`,borderRadius:"9px",padding:"6px 10px",outline:"none",color:"#475569",fontSize:"14px",fontWeight:400,background:"#fff",cursor:"pointer"}} type="date" value={fd[field.id]||""} onChange={e=>{markDirty();setF(field.id,e.target.value);}} required/>
+                <div style={{flex:1}}/>
                 {isBBS&&(
-                  <div style={{display:"flex",gap:"6px",flexShrink:0}}>
+                  <>
                     <button onClick={()=>{markDirty();setFd(prev=>({...prev,"_bbs":BBS_ITEMS.map(item=>item.opts[item.opts.length-1][0])}));}}
-                      style={{padding:"6px 14px",borderRadius:"9px",border:"1.5px solid #fca5a5",background:"#fef2f2",color:"#dc2626",fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                      style={{padding:"6px 14px",borderRadius:"9px",border:"1.5px solid #fca5a5",background:"#fef2f2",color:"#dc2626",fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
                       0점
                     </button>
                     <button onClick={()=>{markDirty();setFd(prev=>({...prev,"_bbs":BBS_ITEMS.map(item=>item.opts[0][0])}));}}
-                      style={{padding:"6px 14px",borderRadius:"9px",border:"1.5px solid #93c5fd",background:"#eff6ff",color:"#1d4ed8",fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                      style={{padding:"6px 14px",borderRadius:"9px",border:"1.5px solid #93c5fd",background:"#eff6ff",color:"#1d4ed8",fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
                       만점 (56점)
                     </button>
-                  </div>
+                  </>
                 )}
               </div>
             </div>
