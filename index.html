@@ -32,7 +32,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v2.18</title>
+  <title>환자 평가 관리 v3.12</title>
   <link rel="manifest" href="manifest.json" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -411,7 +411,23 @@ const DEFAULT_TEMPLATES = {
   },
 };
 
-const APP_VERSION = "v2.18";
+
+// 초성 검색
+const CHOSUNG=['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const getChosung=(str)=>str.split('').map(c=>{
+  const code=c.charCodeAt(0)-0xAC00;
+  if(code<0||code>11171) return c;
+  return CHOSUNG[Math.floor(code/588)];
+}).join('');
+const matchSearch=(text,q)=>{
+  if(!q) return true;
+  if(text.includes(q)) return true;
+  // 초성만으로 이루어진 검색어면 초성 비교
+  if([...q].every(c=>CHOSUNG.includes(c))) return getChosung(text).includes(q);
+  return false;
+};
+
+const APP_VERSION = "v3.12";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -514,12 +530,36 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
   const [editName,setEditName]=useState("");
   const [backupMsg,setBackupMsg]=useState("");
   const [sortKey,setSortKey]=useState("date");   // "date"|"id"|"name"
-  const [sortAsc,setSortAsc]=useState(false);    // false=최신/내림차순, true=오래된/오름차순
+  const [sortAsc,setSortAsc]=useState(true);     // true=오름차순(오래된순), false=내림차순(최신순)
   const fileInputRef=React.useRef(null);
+  const scrollRef=React.useRef(null);
+  const [idErrMsg,setIdErrMsg]=useState("");
+  const idErrTimer=React.useRef(null);
+  const showIdErr=(msg)=>{
+    setIdErrMsg(msg);
+    if(idErrTimer.current) clearTimeout(idErrTimer.current);
+    idErrTimer.current=setTimeout(()=>setIdErrMsg(""),2500);
+  };
+  useEffect(()=>{
+    if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
+  },[]);
+  useEffect(()=>{
+    const onExport=()=>exportBackup();
+    const onImport=()=>fileInputRef.current?.click();
+    document.addEventListener("backup-export",onExport);
+    document.addEventListener("backup-import",onImport);
+    return()=>{
+      document.removeEventListener("backup-export",onExport);
+      document.removeEventListener("backup-import",onImport);
+    };
+  },[db]);
 
   const exportBackup=async()=>{
     const json=JSON.stringify({version:1,exportedAt:new Date().toISOString(),data:db},null,2);
-    const fname=`환자평가_백업_${new Date().toISOString().slice(0,10)}.json`;
+    const now=new Date();
+    const dateStr=now.toISOString().slice(0,10);
+    const timeStr=now.toTimeString().slice(0,8).replace(/:/g,"-");
+    const fname=`환자평가_백업_${dateStr}_${timeStr}.json`;
 
     // 방법1: Blob URL 다운로드 (PC, 안드로이드 크롬 → 다운로드 폴더 직접 저장)
     try{
@@ -608,14 +648,14 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
   const addPt=()=>{
     const id=(newId.trim()||genId());
     const name=(newName.trim()||genName());
-    if(db.patients.find(p=>p.id===id)){alert("이미 존재하는 환자 ID입니다.");return;}
-    persist({...db,patients:[...db.patients,{id,name}]});
-    setNewId("");setNewName("");setAddMode(false);
+    if(db.patients.find(p=>p.id===id)){showIdErr("이미 존재하는 ID입니다.");return;}
+    persist({...db,patients:[...db.patients,{id,name,createdAt:Date.now()}]});
+    setNewId("");setNewName("");setAddMode(false);setIdErrMsg("");
   };
   const quickAdd=()=>{
     const id=genId();
     const name=genName();
-    const newPt={id,name};
+    const newPt={id,name,createdAt:Date.now()};
     const newDb={...db,patients:[...db.patients,newPt]};
     persist(newDb);
     onSelect(newPt);
@@ -638,7 +678,7 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
     if(!editId.trim()||!editName.trim()) return;
     const oldId=editPt.id;
     const newIdVal=editId.trim();
-    if(newIdVal!==oldId&&db.patients.find(p=>p.id===newIdVal)){alert("이미 존재하는 환자 ID입니다.");return;}
+    if(newIdVal!==oldId&&db.patients.find(p=>p.id===newIdVal)){showIdErr("이미 존재하는 ID입니다.");return;}
     // ID가 바뀌면 records 키도 이전
     const newPatients=db.patients.map(p=>p.id===oldId?{id:newIdVal,name:editName.trim()}:p);
     const newRecords={...db.records};
@@ -657,12 +697,19 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
     });
     return latest;
   };
+  const getSortTime=(pid)=>{
+    const latest=getLatestSavedAt(pid);
+    if(latest>0) return latest;
+    // 기록 없으면 생성일 사용
+    const pt=db.patients.find(p=>p.id===pid);
+    return pt?.createdAt||0;
+  };
   const filtered=db.patients
-    .filter(p=>p.id.includes(search)||p.name.includes(search))
+    .filter(p=>matchSearch(p.id,search)||matchSearch(p.name,search))
     .slice()
     .sort((a,b)=>{
       let cmp=0;
-      if(sortKey==="date") cmp=getLatestSavedAt(a.id)-getLatestSavedAt(b.id);
+      if(sortKey==="date") cmp=getSortTime(a.id)-getSortTime(b.id);
       else if(sortKey==="id") cmp=a.id.localeCompare(b.id,"ko",{numeric:true});
       else if(sortKey==="name") cmp=a.name.localeCompare(b.name,"ko");
       return sortAsc?cmp:-cmp;
@@ -670,54 +717,42 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
   const inputStyle={border:"1.5px solid #e2e8f0",borderRadius:"7px",padding:"8px 10px",outline:"none",color:"#1e293b",fontSize:"15px",width:"100%"};
 
   return(
-    <div className="panel-scroll"><div className="pad-sm">
-      <div style={{display:"flex",gap:"8px",marginBottom:"10px"}}>
-        <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"5px",background:"#475569",color:"#fff",border:"none",borderRadius:"11px",padding:"13px 8px",fontSize:"12px",fontWeight:600,cursor:"pointer",lineHeight:1.4,textAlign:"center",boxShadow:"0 2px 8px rgba(71,85,105,0.18)"}} onClick={()=>{setAddMode(true);setEditPt(null);}}>
-          <IcoPlus/>
-          신환 정보 입력 후 평가
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+    {/* 정렬 버튼 + 전체삭제 - 상단 고정 */}
+    <div style={{position:"sticky",top:0,zIndex:50,background:"#f4f7fb",borderBottom:"1px solid #e2e8f0",padding:"8px 14px",display:"flex",gap:"5px",alignItems:"center",flexShrink:0}}>
+      <span style={{fontSize:"11px",color:"#94a3b8",flexShrink:0}}>정렬</span>
+      {[["date","날짜"],["name","이름"],["id","ID"]].map(([k,label])=>(
+        <button key={k} onClick={()=>{ if(sortKey===k) setSortAsc(a=>!a); else{setSortKey(k);setSortAsc(k==="date"?false:true);} }}
+          style={{padding:"5px 10px",borderRadius:"20px",fontSize:"12px",fontWeight:600,cursor:"pointer",border:"1.5px solid",
+            borderColor:sortKey===k?"#2563eb":"#e2e8f0",
+            background:sortKey===k?"#eff6ff":"#f8fafc",
+            color:sortKey===k?"#2563eb":"#94a3b8"}}>
+          {label} {sortKey===k?(sortAsc?"↑":"↓"):""}
         </button>
-        <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"5px",background:"#2563eb",color:"#fff",border:"none",borderRadius:"11px",padding:"13px 8px",fontSize:"12px",fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(37,99,235,0.18)",lineHeight:1.4,textAlign:"center"}} onClick={quickAdd}>
-          <IcoPlus/>
-          빠른 신환 생성 후 평가
+      ))}
+      <div style={{flex:1}}/>
+      {db.patients.length>0&&(
+        <button onClick={async()=>{
+          const ok=await useConfirm(`환자 ${db.patients.length}명 전체가 삭제되며 모든 평가 기록이 사라집니다.\n삭제 전 백업을 권장합니다.\n\n정말 전체 삭제하시겠습니까?`);
+          if(!ok) return;
+          persist({...db,patients:[],records:{}});
+        }} style={{padding:"5px 10px",borderRadius:"20px",fontSize:"12px",fontWeight:600,cursor:"pointer",border:"1.5px solid #ef4444",background:"#fff",color:"#ef4444",flexShrink:0}}>
+          🗑 전체삭제
         </button>
-      </div>
-      <div style={{display:"flex",gap:"8px",marginBottom:"8px"}}>
-        <div style={{flex:1,display:"flex",alignItems:"center",gap:"7px",background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 10px"}}>
-          <IcoSearch/><input style={{border:"none",outline:"none",fontSize:"14px",color:"#334155",width:"100%",background:"transparent"}} placeholder="ID 또는 이름 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
-        </div>
-      </div>
-      {/* 정렬 버튼 */}
-      <div style={{display:"flex",gap:"5px",marginBottom:"10px",alignItems:"center"}}>
-        <span style={{fontSize:"11px",color:"#94a3b8",flexShrink:0}}>정렬</span>
-        {[["date","날짜"],["name","이름"],["id","ID"]].map(([k,label])=>(
-          <button key={k} onClick={()=>{ if(sortKey===k) setSortAsc(a=>!a); else{setSortKey(k);setSortAsc(k==="date"?false:true);} }}
-            style={{padding:"5px 10px",borderRadius:"20px",fontSize:"12px",fontWeight:600,cursor:"pointer",border:"1.5px solid",
-              borderColor:sortKey===k?"#2563eb":"#e2e8f0",
-              background:sortKey===k?"#eff6ff":"#f8fafc",
-              color:sortKey===k?"#2563eb":"#94a3b8"}}>
-            {label} {sortKey===k?(sortAsc?"↑":"↓"):""}
-          </button>
-        ))}
-      </div>
-
-      {/* 신규 추가 폼 */}
-      {addMode&&(
-        <div style={{display:"flex",flexDirection:"column",gap:"7px",marginBottom:"10px",background:"#fff",border:"1.5px solid #2563eb",borderRadius:"10px",padding:"12px"}}>
-          <div style={{fontSize:"11px",fontWeight:700,color:"#2563eb",marginBottom:"2px"}}>새 환자 등록</div>
-          <input style={inputStyle} inputMode="numeric" placeholder="환자 ID (선택사항)" value={newId} onChange={e=>setNewId(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPt()}/>
-          <input style={inputStyle} placeholder="이름 (선택사항)" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPt()}/>
-          <div style={{display:"flex",gap:"7px"}}>
-            <button style={{flex:1,background:"#2563eb",color:"#fff",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",fontWeight:600,cursor:"pointer"}} onClick={addPt}>저장</button>
-            <button style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",cursor:"pointer"}} onClick={()=>{setAddMode(false);setNewId("");setNewName("");}}>취소</button>
-          </div>
-        </div>
       )}
+    </div>
+    <div className="panel-scroll" style={{flex:1}} ref={scrollRef}><div className="pad-sm">
+
+
 
       {/* 수정 폼 */}
       {editPt&&(
         <div style={{display:"flex",flexDirection:"column",gap:"7px",marginBottom:"10px",background:"#fff",border:"1.5px solid #f59e0b",borderRadius:"10px",padding:"12px"}}>
           <div style={{fontSize:"11px",fontWeight:700,color:"#b45309",marginBottom:"2px"}}>환자 정보 수정</div>
-          <input style={{...inputStyle,borderColor:"#fcd34d"}} inputMode="numeric" placeholder="환자 ID" value={editId} onChange={e=>setEditId(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()}/>
+          <div style={{position:"relative"}}>
+            <input style={{...inputStyle,borderColor:idErrMsg?"#ef4444":"#fcd34d"}} inputMode="numeric" placeholder="환자 ID" value={editId} onChange={e=>{setEditId(e.target.value);setIdErrMsg("");}} onKeyDown={e=>e.key==="Enter"&&saveEdit()}/>
+            {idErrMsg&&<div style={{position:"absolute",top:"50%",right:"10px",transform:"translateY(-50%)",fontSize:"11px",color:"#ef4444",fontWeight:700,pointerEvents:"none",background:"#fff",paddingLeft:"4px"}}>{idErrMsg}</div>}
+          </div>
           <input style={{...inputStyle,borderColor:"#fcd34d"}} placeholder="이름" value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()}/>
           <div style={{display:"flex",gap:"7px"}}>
             <button style={{flex:1,background:"#f59e0b",color:"#fff",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",fontWeight:600,cursor:"pointer"}} onClick={saveEdit}>저장</button>
@@ -736,16 +771,20 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
           const isEditing=editPt?.id===p.id;
           return(
             <div key={p.id} className="pt-row" style={{padding:"11px 12px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",justifyContent:"space-between",background:isEditing?"#fffbeb":isSel?"#eff6ff":"white"}} onClick={()=>onSelect(p)}>
-              <div style={{minWidth:0}}>
-                <div style={{fontFamily:"monospace",color:"#2563eb",fontSize:"12px",marginBottom:"1px"}}>{p.id}</div>
-                <div style={{fontWeight:600,fontSize:"14px",color:"#1e293b"}}>{p.name}</div>
-                <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"1px"}}>
-                  {total}건의 기록
-                  {latestSavedAt>0&&<span style={{marginLeft:"6px"}}>· 최근 {new Date(latestSavedAt).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})} {new Date(latestSavedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}</span>}
+              <div style={{minWidth:0,flex:1}}>
+                <div style={{display:"flex",alignItems:"baseline",gap:"8px",flexWrap:"wrap"}}>
+                  <span style={{fontFamily:"monospace",color:"#2563eb",fontSize:"12px"}}>{p.id}</span>
+                  <span style={{fontWeight:600,fontSize:"14px",color:"#1e293b"}}>{p.name}</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>{total}건</span>
+                </div>
+                <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"2px",display:"flex",gap:"8px",flexWrap:"wrap"}}>
+                  {p.createdAt&&<span>최초생성일 {new Date(p.createdAt).toLocaleDateString("ko-KR",{year:"2-digit",month:"2-digit",day:"2-digit"})}</span>}
+                  {latestSavedAt>0&&p.createdAt&&<span style={{color:"#e2e8f0"}}>|</span>}
+                  {latestSavedAt>0&&<span>최근수정 {new Date(latestSavedAt).toLocaleDateString("ko-KR",{month:"2-digit",day:"2-digit"})} {new Date(latestSavedAt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"})}</span>}
                 </div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:"6px",flexShrink:0}}>
-                {isSel&&!isEditing&&<div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#2563eb"}}/>}
+                {isSel&&!isEditing&&<div style={{display:"flex",alignItems:"center",gap:"4px",color:"#2563eb",fontSize:"11px",fontWeight:600}}><div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#2563eb",flexShrink:0}}/> 최근 열람</div>}
                 <button style={{background:"none",border:"1px solid #fcd34d",borderRadius:"6px",padding:"4px 7px",cursor:"pointer",color:"#b45309",display:"inline-flex",alignItems:"center"}} onClick={e=>startEdit(p,e)}><IcoPencil/></button>
                 <button style={S.delBtn} onClick={e=>{e.stopPropagation();delPt(p.id);}}><IcoTrash/></button>
               </div>
@@ -754,30 +793,38 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
         })}
       </div>
 
-      {/* 전체 삭제 */}
-      {db.patients.length>0&&(
-        <div style={{marginTop:"14px"}}>
-          <button onClick={async()=>{
-            const ok=await useConfirm(`환자 ${db.patients.length}명 전체가 삭제되며 모든 평가 기록이 사라집니다.\n삭제 전 백업을 권장합니다.\n\n정말 전체 삭제하시겠습니까?`);
-            if(!ok) return;
-            persist({...db,patients:[],records:{}});
-          }} style={{width:"100%",background:"#fff",border:"1.5px solid #ef4444",color:"#ef4444",borderRadius:"10px",padding:"10px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>
-            🗑 전체 삭제
-          </button>
+      {backupMsg&&<div style={{fontSize:"12px",color:"#475569",textAlign:"center",padding:"4px 0"}}>{backupMsg}</div>}
+    </div></div>
+
+    {/* 하단 고정 영역: 신규등록폼 + 검색 + 신환 버튼 */}
+    <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",padding:"10px 14px",display:"flex",flexDirection:"column",gap:"8px",boxShadow:"0 -2px 10px rgba(0,0,0,0.06)"}}>
+      {addMode&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"7px",background:"#fff",border:"1.5px solid #2563eb",borderRadius:"10px",padding:"12px"}}>
+          <div style={{fontSize:"11px",fontWeight:700,color:"#2563eb",marginBottom:"2px"}}>새 환자 등록</div>
+          <div style={{position:"relative"}}>
+            <input style={{...inputStyle,borderColor:idErrMsg?"#ef4444":undefined}} inputMode="numeric" placeholder="환자 ID (선택사항)" value={newId} onChange={e=>{setNewId(e.target.value);setIdErrMsg("");}} onKeyDown={e=>e.key==="Enter"&&addPt()}/>
+            {idErrMsg&&<div style={{position:"absolute",top:"50%",right:"10px",transform:"translateY(-50%)",fontSize:"11px",color:"#ef4444",fontWeight:700,pointerEvents:"none",background:"#fff",paddingLeft:"4px"}}>{idErrMsg}</div>}
+          </div>
+          <input style={inputStyle} placeholder="이름 (선택사항)" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPt()}/>
+          <div style={{display:"flex",gap:"7px"}}>
+            <button style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",cursor:"pointer"}} onClick={()=>{setAddMode(false);setNewId("");setNewName("");}}>취소</button>
+            <button style={{flex:1,background:"#2563eb",color:"#fff",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",fontWeight:600,cursor:"pointer"}} onClick={addPt}>저장</button>
+          </div>
         </div>
       )}
-
-      {/* 백업/복원 */}
-      <div style={{marginTop:"14px",padding:"12px",background:"#f8fafc",borderRadius:"12px",border:"1.5px solid #e2e8f0"}}>
-        <div style={{fontSize:"11px",fontWeight:700,color:"#64748b",marginBottom:"8px"}}>📦 데이터 백업 / 복원</div>
-        <div style={{display:"flex",gap:"8px"}}>
-          <button onClick={exportBackup} style={{flex:1,background:"#fff",border:"1.5px solid #2563eb",color:"#2563eb",borderRadius:"8px",padding:"9px 0",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>⬇ 백업 저장</button>
-          <button onClick={()=>fileInputRef.current?.click()} style={{flex:1,background:"#fff",border:"1.5px solid #16a34a",color:"#16a34a",borderRadius:"8px",padding:"9px 0",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>⬆ 백업 불러오기</button>
-          <input ref={fileInputRef} type="file" accept="*/*" style={{display:"none"}} onChange={importBackup}/>
-        </div>
-        {backupMsg&&<div style={{marginTop:"8px",fontSize:"12px",color:"#475569",textAlign:"center"}}>{backupMsg}</div>}
+      <div style={{display:"flex",alignItems:"center",gap:"7px",background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 10px"}}>
+        <IcoSearch/><input style={{border:"none",outline:"none",fontSize:"14px",color:"#334155",width:"100%",background:"transparent"}} placeholder="ID 또는 이름 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
-    </div></div>
+      <div style={{display:"flex",gap:"8px"}}>
+        <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"5px",background:"#475569",color:"#fff",border:"none",borderRadius:"11px",padding:"13px 8px",fontSize:"12px",fontWeight:600,cursor:"pointer",lineHeight:1.4,textAlign:"center",boxShadow:"0 2px 8px rgba(71,85,105,0.18)"}} onClick={()=>{setAddMode(true);setEditPt(null);}}>
+          <IcoPlus/>신환 정보 입력 후 평가
+        </button>
+        <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"5px",background:"#2563eb",color:"#fff",border:"none",borderRadius:"11px",padding:"13px 8px",fontSize:"12px",fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(37,99,235,0.18)",lineHeight:1.4,textAlign:"center"}} onClick={quickAdd}>
+          <IcoPlus/>빠른 신환 생성 후 평가
+        </button>
+      </div>
+    </div>
+    </div>
   );
 }
 
@@ -1009,9 +1056,8 @@ function DateSummaryView({db,persist,patient,templates,onEditForm}){
               </div>
               {/* 공유 버튼 - 항상 우측 고정 */}
               <button onClick={e=>{e.stopPropagation();shareDate(d,items);}}
-                style={{flexShrink:0,padding:"0 14px",background:"#f8fafc",border:"none",borderLeft:"1.5px solid #e2e8f0",cursor:"pointer",color:"#475569",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"2px",fontSize:"12px",fontWeight:600}}>
-                <div style={{display:"flex",alignItems:"center",gap:"5px"}}><IcoShare/> 공유</div>
-                <div style={{fontSize:"9px",color:"#94a3b8",fontWeight:400}}>PDF저장 가능</div>
+                style={{flexShrink:0,padding:"0 14px",background:"#f8fafc",border:"none",borderLeft:"1.5px solid #e2e8f0",cursor:"pointer",color:"#475569",display:"flex",alignItems:"center",justifyContent:"center",gap:"5px",fontSize:"12px",fontWeight:600}}>
+                <IcoShare/> 공유
               </button>
             </div>
 
@@ -1287,7 +1333,7 @@ function RecordSummary({evalKey,data,col,templates}){
   );
 }
 
-function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useConfirm}){
+function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useConfirm,showToast}){
   const [tab,setTab]=useState("item");   // "item" | "date"
   const [rv,setRv]=useState("eval-select");
   const [ek,setEk]=useState(null);
@@ -1306,23 +1352,12 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
     setRv(nextRv);
   };
 
-  // 하드웨어 뒤로가기 핸들러를 ref에 등록
+  // 하드웨어 뒤로가기 핸들러를 ref에 등록 (goBack 재사용)
   useEffect(()=>{
     if(!goBackRef) return;
     goBackRef.current=async()=>{
-      if(rv==="eval-form"){
-        if(evalFormDirtyRef.current){
-          const ans=await useConfirm("저장하지 않은 변경사항이 있습니다.\n저장하시겠습니까?");
-          if(ans){ if(evalFormSaveRef.current) evalFormSaveRef.current(); return true; }
-        }
-        evalFormDirtyRef.current=false;
-        setEditRec(null);setRv(tab==="date"?"date-view":"eval-history");return true;
-      }
-      if(rv==="eval-history"){setEk(null);setRv("eval-select");return true;}
-      if(rv==="template-editor"){setRv("eval-select");return true;}
-      if(rv==="date-view"){setRv("eval-select");return true;}
-      if(rv==="eval-select"){onBackToList();return true;}
-      return false;
+      await goBack();
+      return true;
     };
   },[rv,tab,isTablet,goBackRef,onBackToList]);
   const getRecs=(k)=>(db.records[patient?.id]?.[k]||[]).slice().sort((a,b)=>b.savedAt-a.savedAt);
@@ -1332,38 +1367,48 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
     if(rid!=null)rec[pid][k]=rec[pid][k].map(r=>r.id===rid?{...r,data,savedAt:Date.now()}:r);
     else rec[pid][k]=[...rec[pid][k],{id:Date.now(),data,savedAt:Date.now()}];
     persist({...db,records:rec});
+    if(showToast) showToast("✅ 저장됐습니다");
   };
   const delRec=async(k,rid,date)=>{
     const ok=await useConfirm(`"${date||"미기재"} ${k}" 항목을 삭제하시겠습니까?`);
     if(!ok) return;
     const rec={...db.records};rec[patient.id][k]=rec[patient.id][k].filter(r=>r.id!==rid);persist({...db,records:rec});
   };
-  const leaveForm=async(dest,opts={})=>{
-    if(evalFormDirtyRef.current){
-      const ans=await useConfirm("저장하지 않은 변경사항이 있습니다.\n저장하시겠습니까?");
-      if(ans){
-        if(evalFormSaveRef.current) evalFormSaveRef.current();
-        return;
+  const goBack=async()=>{
+    if(rv==="eval-form"){
+      if(evalFormDirtyRef.current){
+        const ans=await useConfirm("저장하지 않은 변경사항이 있습니다.\n저장하시겠습니까?");
+        if(ans){ if(evalFormSaveRef.current) evalFormSaveRef.current(); return; }
       }
-    }
-    evalFormDirtyRef.current=false;
-    if(opts.clearRec) setEditRec(null);
-    if(opts.clearEk) setEk(null);
-    setRv(dest);
-  };
-  const goBack=()=>{
-    if(rv==="eval-form") leaveForm(tab==="date"?"date-view":"eval-history",{clearRec:true});
-    else if(rv==="eval-history"){setEk(null);setRv("eval-select");}
+      evalFormDirtyRef.current=false;
+      setEditRec(null);
+      setRv(tab==="date"?"date-view":"eval-history");
+    } else if(rv==="eval-history"){setEk(null);setRv("eval-select");}
     else if(rv==="template-editor")setRv("eval-select");
     else if(rv==="date-view")setRv("eval-select");
-    else if(rv==="eval-select"&&!isTablet)onBackToList();
+    else if(rv==="eval-select")onBackToList();
   };
   const crumb=()=>{
-    if(!patient) return "";
-    const base=`${patient.id}  ${patient.name}`;
-    if(rv==="template-editor") return "서식 편집";
-    if(ek&&rv==="eval-form") return `${base}  ›  ${ek} ${editRec?"수정":"신규"}`;
-    if(ek&&rv==="eval-history") return `${base}  ›  ${ek}`;
+    if(!patient) return null;
+    const col=ek?EVAL_COLORS[ek]:null;
+    const base=<span style={{fontWeight:700,color:"#1e293b"}}>{patient.id} {patient.name}</span>;
+    if(rv==="template-editor") return <span style={{fontWeight:700,color:"#1e293b"}}>서식 편집</span>;
+    if(ek&&rv==="eval-form") return(
+      <span style={{display:"flex",alignItems:"center",gap:"5px",flexWrap:"nowrap"}}>
+        {base}
+        <span style={{color:"#94a3b8",fontSize:"13px"}}>›</span>
+        <span style={{background:col?.bg,color:col?.accent,border:`1.5px solid ${col?.border}`,borderRadius:"6px",padding:"1px 7px",fontSize:"13px",fontWeight:700,whiteSpace:"nowrap"}}>{ek}</span>
+        <span style={{color:"#94a3b8",fontSize:"13px"}}>›</span>
+        <span style={{fontSize:"13px",fontWeight:600,color:"#475569"}}>{editRec?"수정":"신규"}</span>
+      </span>
+    );
+    if(ek&&rv==="eval-history") return(
+      <span style={{display:"flex",alignItems:"center",gap:"5px",flexWrap:"nowrap"}}>
+        {base}
+        <span style={{color:"#94a3b8",fontSize:"13px"}}>›</span>
+        <span style={{background:col?.bg,color:col?.accent,border:`1.5px solid ${col?.border}`,borderRadius:"6px",padding:"1px 7px",fontSize:"13px",fontWeight:700,whiteSpace:"nowrap"}}>{ek}</span>
+      </span>
+    );
     return base;
   };
 
@@ -1378,15 +1423,14 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
     </div>
   );
   const showBack=rv!=="eval-select"||!isTablet;
-  const showTabs=rv==="eval-select"&&!["template-editor"].includes(rv);
 
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       {/* 서브 헤더 */}
       <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:"0 14px",height:"44px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:"4px",minWidth:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:"4px",minWidth:0,flex:1,overflow:"hidden"}}>
           {showBack&&<button onClick={goBack} style={{background:"none",border:"none",padding:"4px 4px 4px 0",color:"#475569",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}><IcoBack/></button>}
-          <span style={{fontSize:"17px",fontWeight:700,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{crumb()}</span>
+          <div style={{display:"flex",alignItems:"center",gap:"5px",overflow:"hidden",minWidth:0}}>{crumb()}</div>
         </div>
         {rv==="eval-select"&&(
           <button style={{display:"flex",alignItems:"center",gap:"4px",background:"none",border:"1px solid #cbd5e1",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#475569",cursor:"pointer"}}
@@ -1396,30 +1440,28 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
         )}
       </div>
 
-      {/* 탭 (eval-select 화면에서만 표시) */}
-      {rv==="eval-select"&&(
-        <div style={{display:"flex",borderBottom:"1.5px solid #e2e8f0",background:"#fff",flexShrink:0}}>
-          {[["item","항목별"],["date","날짜별"]].map(([t,label])=>(
-            <button key={t} onClick={()=>setTab(t)}
-              style={{flex:1,padding:"10px 0",fontSize:"13px",fontWeight:tab===t?700:400,color:tab===t?"#2563eb":"#94a3b8",border:"none",borderBottom:tab===t?"2.5px solid #2563eb":"2.5px solid transparent",background:"none",cursor:"pointer",transition:"all 0.15s"}}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
+
 
       <div className="panel-scroll" style={{flex:1}}><div className="pad-sm">
 
-        {/* 항목별 탭 */}
+        {/* 평가 항목별 탭 */}
         {rv==="eval-select"&&tab==="item"&&(
           <><p style={S.secLabel}>평가 항목 선택</p>
           <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"10px"}}>
             {EVAL_KEYS.map(key=>{
               const col=EVAL_COLORS[key],tmpl=db.templates[key],cnt=getRecs(key).length;
-              return(<div key={key} onClick={()=>{navTo("eval-history",{ek:key});}} style={{border:`2px solid ${col.border}`,borderRadius:"12px",padding:"16px 14px",cursor:"pointer",background:col.bg,boxShadow:"0 2px 6px rgba(0,0,0,0.05)"}}>
+              const isEmpty=cnt===0;
+              return(<div key={key} onClick={()=>{navTo("eval-history",{ek:key});}} style={{border:`2px solid ${isEmpty?"#94a3b8":col.border}`,borderRadius:"12px",padding:"16px 14px",cursor:"pointer",background:isEmpty?"#f1f5f9":col.bg,boxShadow:"0 2px 6px rgba(0,0,0,0.05)",opacity:isEmpty?0.85:1}}>
                 <div style={{fontSize:"18px",fontWeight:800,color:col.accent,marginBottom:"2px"}}>{key}</div>
-                <div style={{fontSize:"11px",color:col.text,marginBottom:"8px",lineHeight:1.4}}>{tmpl?.label||key}</div>
-                <div style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"11px",fontWeight:600,color:col.accent}}><IcoDoc/> {cnt}건</div>
+                <div style={{fontSize:"11px",color:isEmpty?"#94a3b8":col.text,marginBottom:"8px",lineHeight:1.4}}>{tmpl?.label||key}</div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:"2px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"4px",fontSize:"11px",fontWeight:600,color:isEmpty?"#94a3b8":col.accent}}><IcoDoc/> {cnt}건</div>
+                  {!isEmpty&&(()=>{
+                    const recs=getRecs(key);
+                    const lastDate=recs[0]?.data?.date;
+                    return lastDate?<span style={{fontSize:"10px",color:col.text,fontWeight:500}}>{lastDate}</span>:null;
+                  })()}
+                </div>
               </div>);
             })}
           </div></>
@@ -1508,6 +1550,21 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
 
       </div></div>
 
+      {/* 하단 탭 (eval-select 화면에서만) */}
+      {rv==="eval-select"&&(
+        <div style={{position:"fixed",bottom:"80px",left:0,right:0,zIndex:490,display:"flex",background:"#f8fafc",borderTop:"1.5px solid #e2e8f0",boxShadow:"0 -2px 8px rgba(0,0,0,0.06)",padding:"6px 12px",gap:"8px"}}>
+          {[["item","평가 항목별"],["date","날짜별 모아보기"]].map(([t,label],i)=>(
+            <React.Fragment key={t}>
+              {i===1&&<div style={{width:"1.5px",background:"#e2e8f0",borderRadius:"2px",alignSelf:"stretch"}}/>}
+              <button onClick={()=>setTab(t)}
+                style={{flex:1,padding:"10px 0",fontSize:"13px",fontWeight:tab===t?700:500,color:tab===t?"#fff":"#64748b",border:"none",borderRadius:"10px",background:tab===t?"#2563eb":"transparent",cursor:"pointer",transition:"all 0.15s",WebkitTapHighlightColor:"transparent"}}>
+                {label}
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+
       {/* 좌측 하단 뒤로가기 버튼 */}
       {showBack&&(
         <button onClick={goBack}
@@ -1523,24 +1580,38 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
 function MmtSelect({value, onChange}){
   const [open,setOpen]=React.useState(false);
   const btnRef=React.useRef(null);
+  const portalId=React.useRef("mmt-portal-"+Math.random().toString(36).slice(2));
   const [pos,setPos]=React.useState({top:0,left:0});
-  // 전역 단일 터치 상태 - React synthetic event와 분리
   const ts=React.useRef({startX:0,startY:0,moved:false,startedInPortal:false});
 
   const calcPos=()=>{
     if(!btnRef.current) return;
     const r=btnRef.current.getBoundingClientRect();
-    setPos({top:r.bottom+window.scrollY+3,left:r.left+window.scrollX+r.width/2});
+    setPos({top:r.bottom+3, left:r.left+r.width/2});
   };
 
+  // 스크롤 시 위치 업데이트 - window + 모든 스크롤 컨테이너 감지
   useEffect(()=>{
-    if(!open){ calcPos(); return; }
+    if(!open) return;
     calcPos();
+    const onScroll=()=>{ requestAnimationFrame(calcPos); };
+    // capture:true로 모든 스크롤 이벤트 감지 (iOS overflow 컨테이너 포함)
+    window.addEventListener("scroll",onScroll,{passive:true,capture:true});
+    window.addEventListener("touchmove",onScroll,{passive:true});
+    return()=>{
+      window.removeEventListener("scroll",onScroll,{capture:true});
+      window.removeEventListener("touchmove",onScroll);
+    };
+  },[open]);
 
-    const getPortal=()=>document.getElementById("mmt-portal");
+  useEffect(()=>{
+    if(!open) return;
+    const pid=portalId.current;
+    const getPortal=()=>document.getElementById(pid);
 
     const onTouchStart=(e)=>{
-      const t=e.touches[0];
+      const t=e.touches?.[0];
+      if(!t) return;
       const portal=getPortal();
       ts.current={
         startX:t.clientX, startY:t.clientY,
@@ -1550,42 +1621,30 @@ function MmtSelect({value, onChange}){
     };
 
     const onTouchMove=(e)=>{
-      const t=e.touches[0];
+      const t=e.touches?.[0];
+      if(!t) return;
       const dx=Math.abs(t.clientX-ts.current.startX);
       const dy=Math.abs(t.clientY-ts.current.startY);
       if(dx>5||dy>5) ts.current.moved=true;
-      // 포털 안에서 시작된 터치면 바깥 스크롤 완전 차단
       if(ts.current.startedInPortal) e.preventDefault();
     };
 
     const onTouchEnd=(e)=>{
-      const moved=ts.current.moved;
-      const startedInPortal=ts.current.startedInPortal;
-      const t=e.changedTouches[0];
+      if(ts.current.moved) return;
+      const t=e.changedTouches?.[0];
+      if(!t) return;
       const el=document.elementFromPoint(t.clientX,t.clientY);
       const portal=getPortal();
       const isInPortal=portal&&portal.contains(el);
       const isInBtn=btnRef.current&&btnRef.current.contains(el);
-
-      if(moved){
-        // 드래그 → 아무것도 하지 않음 (선택X, 닫기X)
-        return;
-      }
       if(isInPortal){
-        // 포털 안 탭 → 해당 항목 값 찾아서 선택
-        const item=el.closest("[data-mmt]");
-        if(item){
-          e.preventDefault();
-          onChange(item.getAttribute("data-mmt-val"));
-          setOpen(false);
-        }
+        const item=el?.closest("[data-mmt]");
+        if(item){ e.preventDefault(); onChange(item.getAttribute("data-mmt-val")); setOpen(false); }
       } else if(!isInBtn){
-        // 포털·버튼 바깥 탭 → 닫기
         setOpen(false);
       }
     };
 
-    // PC: mousedown으로 바깥 닫기만
     const onMouseDown=(e)=>{
       const portal=getPortal();
       if(!portal?.contains(e.target)&&!btnRef.current?.contains(e.target)) setOpen(false);
@@ -1607,9 +1666,9 @@ function MmtSelect({value, onChange}){
 
   const dropdown=open&&ReactDOM.createPortal(
     <div
-      id="mmt-portal"
+      id={portalId.current}
       onWheel={e=>e.stopPropagation()}
-      style={{position:"absolute",top:pos.top,left:pos.left,transform:"translateX(-50%)",zIndex:9000,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:"10px",boxShadow:"0 8px 24px rgba(0,0,0,0.18)",overflowY:"auto",overflowX:"hidden",maxHeight:"320px",minWidth:"82px",WebkitOverflowScrolling:"touch"}}>
+      style={{position:"fixed",top:pos.top,left:pos.left,transform:"translateX(-50%)",zIndex:9000,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:"10px",boxShadow:"0 8px 24px rgba(0,0,0,0.18)",overflowY:"auto",overflowX:"hidden",maxHeight:"260px",minWidth:"82px",WebkitOverflowScrolling:"touch"}}>
       {MMT_OPTIONS.map(o=>{
         const on=value===o;
         return(
@@ -1629,7 +1688,7 @@ function MmtSelect({value, onChange}){
   return(
     <div style={{position:"relative",display:"inline-block"}}>
       <button ref={btnRef}
-        onClick={e=>{e.stopPropagation();setOpen(o=>!o);}}
+        onClick={e=>{e.stopPropagation();calcPos();setOpen(o=>!o);}}
         style={{width:"70px",height:"38px",border:"1.5px solid #e2e8f0",borderRadius:"8px",background:"#fff",color:value===""?"#94a3b8":"#1e293b",fontSize:"14px",fontWeight:value===""?400:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:"3px",userSelect:"none",WebkitUserSelect:"none"}}>
         {display}
         <span style={{fontSize:"9px",color:"#94a3b8",marginTop:"1px"}}>{open?"▲":"▼"}</span>
@@ -1639,6 +1698,16 @@ function MmtSelect({value, onChange}){
   );
 }
 
+
+
+function Toast({msg}){
+  if(!msg) return null;
+  return(
+    <div style={{position:"fixed",bottom:"90px",left:"50%",transform:"translateX(-50%)",zIndex:9998,background:"#1e293b",color:"#fff",borderRadius:"12px",padding:"10px 20px",fontSize:"13px",fontWeight:600,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",whiteSpace:"nowrap",pointerEvents:"none"}}>
+      {msg}
+    </div>
+  );
+}
 
 function ConfirmDialog({msg, onYes, onNo}){
   if(!msg) return null;
@@ -1659,19 +1728,24 @@ function App(){
   const [db,setDb]=useState(()=>{autoBackupOnOpen();return loadData();});
   const [patient,setPatient]=useState(null);
   const [mobileView,setMobileView]=useState("list");
-  const [showSplash,setShowSplash]=useState(true);
   const isTablet=useIsTablet();
   const contentGoBackRef=React.useRef(null);
   const mobileViewRef=React.useRef("list");
   const setMobileViewSync=(v)=>{mobileViewRef.current=v;setMobileView(v);};
   const persist=nd=>{setDb(nd);saveData(nd);};
   const [confirmState,setConfirmState]=useState({msg:null,onYes:null});
+  const [toastMsg,setToastMsg]=useState("");
+  const toastRef=React.useRef(null);
+  const showToast=(msg)=>{
+    setToastMsg(msg);
+    if(toastRef.current) clearTimeout(toastRef.current);
+    toastRef.current=setTimeout(()=>setToastMsg(""),2000);
+  };
   const useConfirm=(msg)=>new Promise(res=>{
     setConfirmState({msg,onYes:()=>{setConfirmState({msg:null,onYes:null});res(true);},onNo:()=>{setConfirmState({msg:null,onYes:null});res(false);}});
   });
   const useConfirmRef=React.useRef(useConfirm);
   useEffect(()=>{ useConfirmRef.current=useConfirm; });
-  useEffect(()=>{ const t=setTimeout(()=>setShowSplash(false),1500); return()=>clearTimeout(t); },[]);
   const selectPatient=p=>{
     setPatient(p);
     if(!isTablet){
@@ -1716,12 +1790,8 @@ function App(){
   return(
     <div className="layout-shell">
       <ConfirmDialog msg={confirmState.msg} onYes={confirmState.onYes} onNo={confirmState.onNo}/>
-      {showSplash&&(
-        <div style={{position:"fixed",inset:0,zIndex:99999,background:"#2563eb",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"12px"}}>
-          <div style={{fontSize:"28px",fontWeight:800,color:"#fff",letterSpacing:"-0.5px"}}>환자평가관리</div>
-          <div style={{fontSize:"14px",fontWeight:500,color:"rgba(255,255,255,0.7)"}}>{APP_VERSION}</div>
-        </div>
-      )}
+      <Toast msg={toastMsg}/>
+
       <div className="topbar">
         <div style={{display:"flex",alignItems:"center",gap:"6px",minWidth:0,flex:1}}>
           {!isTablet&&mobileView==="content"&&(
@@ -1733,13 +1803,30 @@ function App(){
             <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b"}}>환자 평가 관리 <span style={{fontSize:"12px",fontWeight:500,color:"#94a3b8"}}>{APP_VERSION}</span></span>
           )}
         </div>
+        {(!isTablet||mobileView!=="content")&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"3px",flexShrink:0}}>
+            <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+              <button onClick={()=>document.dispatchEvent(new CustomEvent("backup-export"))} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#2563eb",cursor:"pointer",fontWeight:600}}>⬇ 백업</button>
+              <button onClick={()=>document.dispatchEvent(new CustomEvent("backup-import"))} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#16a34a",cursor:"pointer",fontWeight:600}}>⬆ 복원</button>
+            </div>
+            {(()=>{
+              const d=localStorage.getItem("pt_eval_backup_date");
+              const t=localStorage.getItem("pt_eval_backup_latest");
+              if(!d) return <span style={{fontSize:"9px",color:"#ef4444",fontWeight:600}}>백업 없음</span>;
+              const today=new Date().toISOString().slice(0,10);
+              const days=Math.floor((new Date(today)-new Date(d))/(1000*60*60*24));
+              const color=days>=7?"#ef4444":days>=3?"#f59e0b":"#94a3b8";
+              return <span style={{fontSize:"9px",color,fontWeight:600}}>마지막 백업 {days===0?"오늘":`${days}일 전`}</span>;
+            })()}
+          </div>
+        )}
       </div>
       <div className="main-area">
         <div className="panel-left" style={!isTablet&&mobileView==="content"?{display:"none"}:{}}>
           <PatientListPanel db={db} persist={persist} selectedPatient={patient} onSelect={selectPatient} useConfirm={useConfirm}/>
         </div>
         <div className="panel-right" style={!isTablet&&mobileView==="list"?{display:"none"}:{display:"block",flex:1,overflow:"hidden"}}>
-          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={()=>setMobileViewSync("list")} goBackRef={contentGoBackRef} useConfirm={useConfirm}/>
+          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={()=>setMobileViewSync("list")} goBackRef={contentGoBackRef} useConfirm={useConfirm} showToast={showToast}/>
         </div>
       </div>
     </div>
@@ -1826,6 +1913,8 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
 
   const handleSave=()=>{
     const final={...fd};
+    // 검사일 미입력 시 오늘 날짜로 자동 채움
+    if(final.date===undefined||final.date==="") final.date=new Date().toISOString().slice(0,10);
     if(template?.fields?.find(f=>f.type==="bbs_full")){
       final.bbs_total=(fd["_bbs"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
     }
@@ -1853,15 +1942,6 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
 
   return(
     <div>
-    {/* 상단 고정 저장 바 */}
-    <div style={{position:"sticky",top:0,zIndex:50,background:"#fff",borderBottom:"1.5px solid #e2e8f0",padding:"8px 12px",display:"flex",gap:"8px",boxShadow:"0 2px 6px rgba(0,0,0,0.06)",marginBottom:"8px"}}>
-      <button style={{background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"10px 18px",fontSize:"14px",cursor:"pointer"}} onClick={handleCancel}>취소</button>
-      <button style={{flex:1,background:col.accent,color:"#fff",border:"none",borderRadius:"10px",padding:"10px",fontSize:"14px",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}
-        onClick={handleSave}>
-        {isDirty&&<span style={{width:"7px",height:"7px",borderRadius:"50%",background:"rgba(255,255,255,0.75)",display:"inline-block",flexShrink:0}}/>}
-        저장
-      </button>
-    </div>
     <div style={S.formCard}>
       {(template?.fields||[]).map(field=>{
         const disabled = isTestFailure && FAILURE_DISABLED.includes(field.id);
@@ -2261,16 +2341,18 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
             ):field.type==="textarea"?(
               <textarea style={S.textarea} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
             ):(
-              <input style={S.input} type="text" inputMode={field.inputMode||(field.type==="number"?"decimal":undefined)} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
+              <input style={{...S.input,borderColor:field.type==="date"&&!fd[field.id]?"#f87171":undefined}} type={field.type==="date"?"date":"text"} inputMode={field.inputMode||(field.type==="number"?"decimal":undefined)} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)} required={field.type==="date"}/>
             )}
           </div>
         );
       })}
     </div>
-    <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}>
-      <button style={{background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px 18px",fontSize:"14px",cursor:"pointer"}} onClick={handleCancel}>취소</button>
-      <button style={{background:col.accent,color:"#fff",border:"none",borderRadius:"10px",padding:"11px 26px",fontSize:"14px",fontWeight:700,cursor:"pointer"}} onClick={handleSave}>저장</button>
-    </div></div>
+    {/* 플로팅 저장 버튼 - 좌측 하단 뒤로가기 버튼 오른쪽 */}
+    <div style={{position:"fixed",right:"20px",bottom:"24px",zIndex:500,display:"flex",alignItems:"center",gap:"6px",background:col.accent,borderRadius:"28px",padding:"13px 24px",fontSize:"14px",fontWeight:700,color:"#fff",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.2)",WebkitTapHighlightColor:"transparent"}} onClick={handleSave}>
+      {isDirty&&<span style={{width:"7px",height:"7px",borderRadius:"50%",background:"rgba(255,255,255,0.7)",display:"inline-block",flexShrink:0}}/>}
+      저장
+    </div>
+    <div style={{height:"80px"}}/></div>
   );
 }
 
