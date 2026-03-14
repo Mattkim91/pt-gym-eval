@@ -1214,7 +1214,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
       if(rv==="eval-history"){setEk(null);setRv("eval-select");return true;}
       if(rv==="template-editor"){setRv("eval-select");return true;}
       if(rv==="date-view"){setRv("eval-select");return true;}
-      if(rv==="eval-select"&&!isTablet){onBackToList();return true;}
+      if(rv==="eval-select"){onBackToList();return true;}
       return false;
     };
   },[rv,tab,isTablet,goBackRef,onBackToList]);
@@ -1293,7 +1293,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
       {rv==="eval-select"&&(
         <div style={{display:"flex",borderBottom:"1.5px solid #e2e8f0",background:"#fff",flexShrink:0}}>
           {[["item","항목별"],["date","날짜별"]].map(([t,label])=>(
-            <button key={t} onClick={()=>setTab(t)}
+            <button key={t} onClick={()=>{history.pushState({level:"content",rv:"eval-select",tab:t},"");setTab(t);}}
               style={{flex:1,padding:"10px 0",fontSize:"13px",fontWeight:tab===t?700:400,color:tab===t?"#2563eb":"#94a3b8",border:"none",borderBottom:tab===t?"2.5px solid #2563eb":"2.5px solid transparent",background:"none",cursor:"pointer",transition:"all 0.15s"}}>
               {label}
             </button>
@@ -1561,17 +1561,16 @@ function App(){
       const handled = contentGoBackRef.current && await contentGoBackRef.current();
       if(!handled){
         if(mobileViewRef.current==="content"){
-          // 콘텐츠 → 목록
+          // 콘텐츠 패널 → 목록으로
           setMobileView("list");
           mobileViewRef.current="list";
           history.pushState({level:"guard"},"");
         } else {
-          // 목록 화면 = 앱 최상위 → 종료 확인
+          // 최상위 → 종료 확인
+          history.pushState({level:"guard"},""); // 먼저 guard 복구
           const exit = await useConfirm("앱을 종료하시겠습니까?");
           if(exit){
-            history.back();
-          } else {
-            history.pushState({level:"guard"},"");
+            history.go(-2); // base + guard 두 단계 뒤로
           }
         }
       } else {
