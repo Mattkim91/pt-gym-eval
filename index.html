@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v5.8</title>
+  <title>환자 평가 관리 v5.9</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v5.8";
+const APP_VERSION = "v5.9";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1362,28 +1362,9 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
     setRv(nextRv);
   };
 
-  // 하드웨어 뒤로가기 핸들러를 ref에 등록 (goBack 재사용)
-  useEffect(()=>{
-    if(!goBackRef) return;
-    goBackRef.current=async()=>{
-      await goBack();
-      return true;
-    };
-  },[rv,tab,isTablet,goBackRef,onBackToList]);
-  const getRecs=(k)=>(db.records[patient?.id]?.[k]||[]).slice().sort((a,b)=>b.savedAt-a.savedAt);
-  const saveRec=(k,data,rid)=>{
-    const rec={...db.records},pid=patient.id;
-    if(!rec[pid])rec[pid]={};if(!rec[pid][k])rec[pid][k]=[];
-    if(rid!=null)rec[pid][k]=rec[pid][k].map(r=>r.id===rid?{...r,data,savedAt:Date.now()}:r);
-    else rec[pid][k]=[...rec[pid][k],{id:Date.now(),data,savedAt:Date.now()}];
-    persist({...db,records:rec});
-    if(showToast) showToast("✅ 저장됐습니다");
-  };
-  const delRec=async(k,rid,date)=>{
-    const ok=await useConfirm(`"${date||"미기재"} ${k}" 항목을 삭제하시겠습니까?`);
-    if(!ok) return;
-    const rec={...db.records};rec[patient.id][k]=rec[patient.id][k].filter(r=>r.id!==rid);persist({...db,records:rec});
-  };
+  // goBackLatest ref: 매 렌더마다 최신 goBack 클로저 동기화
+  // → useEffect 의존성 누락으로 낡은 state 참조하는 버그 완전 해결
+  const goBackLatest=React.useRef(null);
   const goBack=async()=>{
     if(rv==="eval-form"){
       if(evalFormDirtyRef.current){
@@ -1397,14 +1378,29 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
     } else if(rv==="eval-history"){setEk(null);setRv("eval-select");return true;}
     else if(rv==="date-view"){setRv("eval-select");return true;}
     else if(rv==="eval-select"){
-      // 모바일: content 패널 → list 패널로 이동도 여기서 처리
-      if(mobileViewRef.current==="content"){
-        onBackToList();
-        return true;
-      }
-      return false; // list 상태에서 eval-select면 최상위 → 종료 확인으로 넘김
+      if(mobileViewRef.current==="content"){ onBackToList(); return true; }
+      return false;
     }
     return false;
+  };
+  // 매 렌더마다 최신 goBack을 ref에 동기화
+  goBackLatest.current=goBack;
+  // goBackRef(App → ContentPanel)도 항상 최신으로 연결
+  useEffect(()=>{ if(goBackRef) goBackRef.current=()=>goBackLatest.current(); });
+
+  const getRecs=(k)=>(db.records[patient?.id]?.[k]||[]).slice().sort((a,b)=>b.savedAt-a.savedAt);
+  const saveRec=(k,data,rid)=>{
+    const rec={...db.records},pid=patient.id;
+    if(!rec[pid])rec[pid]={};if(!rec[pid][k])rec[pid][k]=[];
+    if(rid!=null)rec[pid][k]=rec[pid][k].map(r=>r.id===rid?{...r,data,savedAt:Date.now()}:r);
+    else rec[pid][k]=[...rec[pid][k],{id:Date.now(),data,savedAt:Date.now()}];
+    persist({...db,records:rec});
+    if(showToast) showToast("✅ 저장됐습니다");
+  };
+  const delRec=async(k,rid,date)=>{
+    const ok=await useConfirm(`"${date||"미기재"} ${k}" 항목을 삭제하시겠습니까?`);
+    if(!ok) return;
+    const rec={...db.records};rec[patient.id][k]=rec[patient.id][k].filter(r=>r.id!==rid);persist({...db,records:rec});
   };
   const crumb=()=>{
     if(!patient) return null;
