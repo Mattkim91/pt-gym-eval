@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.0</title>
+  <title>환자 평가 관리 v6.1</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.0";
+const APP_VERSION = "v6.1";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1363,7 +1363,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
   };
 
 
-  // goBack: 렌더 중 직접 ref 동기화 → useEffect 타이밍 문제 완전 제거
+  // goBack: useLayoutEffect로 매 렌더 후 즉시 동기화 (가장 안정적)
   const goBackLatest=React.useRef(null);
   const goBack=async()=>{
     if(rv==="eval-form"){
@@ -1378,16 +1378,16 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
     } else if(rv==="eval-history"){setEk(null);setRv("eval-select");return true;}
     else if(rv==="date-view"){setRv("eval-select");return true;}
     else if(rv==="eval-select"){
-      // 모바일이면 무조건 목록으로, 태블릿이면 이미 목록이 보이므로 false
       if(!isTablet){ onBackToList(); return true; }
       return false;
     }
     return false;
   };
-  // 렌더마다 최신 클로저 동기화 (useEffect 없이)
-  goBackLatest.current=goBack;
-  // goBackRef: App이 기기 뒤로가기 처리 시 호출 — 렌더 중 직접 등록
-  if(goBackRef) goBackRef.current=()=>goBackLatest.current();
+  // useLayoutEffect: DOM 커밋 직후 동기 실행 → 기기 뒤로가기 타이밍 문제 완전 해결
+  React.useLayoutEffect(()=>{
+    goBackLatest.current=goBack;
+    if(goBackRef) goBackRef.current=()=>goBackLatest.current();
+  });
 
   const getRecs=(k)=>(db.records[patient?.id]?.[k]||[]).slice().sort((a,b)=>b.savedAt-a.savedAt);
   const saveRec=(k,data,rid)=>{
@@ -1751,9 +1751,26 @@ function ConfirmDialog({msg, onYes, onNo}){
 
 function App(){
   const [db,setDb]=useState(()=>{autoBackupOnOpen();return loadData();});
-  const [patient,setPatient]=useState(null);
-  const [mobileView,setMobileView]=useState("list");
   const isTablet=useIsTablet();
+  // 마지막 화면 복원: sessionStorage에서 환자 ID + mobileView 복원
+  const [patient,setPatient]=useState(()=>{
+    try{
+      const saved=sessionStorage.getItem("pt_last_state");
+      if(!saved) return null;
+      const {patientId,view}=JSON.parse(saved);
+      const db=loadData();
+      const p=db.patients.find(p=>p.id===patientId);
+      return p||null;
+    }catch{return null;}
+  });
+  const [mobileView,setMobileView]=useState(()=>{
+    try{
+      const saved=sessionStorage.getItem("pt_last_state");
+      if(!saved) return "list";
+      const {view}=JSON.parse(saved);
+      return view||"list";
+    }catch{return "list";}
+  });
   const contentGoBackRef=React.useRef(null);
   const mobileViewRef=React.useRef("list");
   const setMobileViewSync=(v)=>{mobileViewRef.current=v;setMobileView(v);};
@@ -1773,9 +1790,10 @@ function App(){
   useEffect(()=>{ useConfirmRef.current=useConfirm; });
   const selectPatient=p=>{
     setPatient(p);
-    if(!isTablet){
-      setMobileViewSync("content");
-    }
+    const view=isTablet?"list":"content";
+    if(!isTablet) setMobileViewSync("content");
+    // 마지막 선택 환자 저장
+    try{ sessionStorage.setItem("pt_last_state",JSON.stringify({patientId:p.id,view})); }catch{}
   };
   useEffect(()=>{
     // 단순 전략: guard 하나만 항상 유지
@@ -1865,7 +1883,7 @@ function App(){
           <PatientListPanel db={db} persist={persist} selectedPatient={patient} onSelect={selectPatient} useConfirm={useConfirm}/>
         </div>
         <div className="panel-right" style={!isTablet&&mobileView==="list"?{display:"none"}:{display:"block",flex:1,overflow:"hidden"}}>
-          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={()=>setMobileViewSync("list")} goBackRef={contentGoBackRef} useConfirm={useConfirm} showToast={showToast}/>
+          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={()=>{ setMobileViewSync("list"); try{sessionStorage.setItem("pt_last_state",JSON.stringify({patientId:patient?.id,view:"list"}));}catch{} }} goBackRef={contentGoBackRef} useConfirm={useConfirm} showToast={showToast}/>
         </div>
       </div>
     </div>
