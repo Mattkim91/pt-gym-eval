@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v5.4</title>
+  <title>환자 평가 관리 v5.8</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v5.4";
+const APP_VERSION = "v5.8";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1388,14 +1388,23 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
     if(rv==="eval-form"){
       if(evalFormDirtyRef.current){
         const ans=await useConfirm("저장하지 않은 변경사항이 있습니다.\n저장하시겠습니까?");
-        if(ans){ if(evalFormSaveRef.current) evalFormSaveRef.current(); return; }
+        if(ans){ if(evalFormSaveRef.current) evalFormSaveRef.current(); return true; }
       }
       evalFormDirtyRef.current=false;
       setEditRec(null);
       setRv(tab==="date"?"date-view":"eval-history");
-    } else if(rv==="eval-history"){setEk(null);setRv("eval-select");}
-    else if(rv==="date-view")setRv("eval-select");
-    else if(rv==="eval-select")onBackToList();
+      return true;
+    } else if(rv==="eval-history"){setEk(null);setRv("eval-select");return true;}
+    else if(rv==="date-view"){setRv("eval-select");return true;}
+    else if(rv==="eval-select"){
+      // 모바일: content 패널 → list 패널로 이동도 여기서 처리
+      if(mobileViewRef.current==="content"){
+        onBackToList();
+        return true;
+      }
+      return false; // list 상태에서 eval-select면 최상위 → 종료 확인으로 넘김
+    }
+    return false;
   };
   const crumb=()=>{
     if(!patient) return null;
@@ -1777,27 +1786,37 @@ function App(){
     history.replaceState({level:"base"},"");
     history.pushState({level:"guard"},"");
 
+    let popLocked = false; // 연속 뒤로가기 중복 실행 방지 락
+
     const onPop=async()=>{
-      // 항상 guard를 즉시 복구 (종료 방지)
+      // 락 걸려있으면 즉시 guard 복구 후 무시
+      if(popLocked){ history.pushState({level:"guard"},""); return; }
+      popLocked = true;
+
+      // 항상 guard를 즉시 복구 → 앱이 절대 바로 닫히지 않음
       history.pushState({level:"guard"},"");
 
-      // ContentPanel 뒤로가기 처리 시도
-      const handled = contentGoBackRef.current && await contentGoBackRef.current();
-      if(handled) return;
+      try{
+        // ContentPanel 뒤로가기 처리 시도
+        const handled = contentGoBackRef.current && await contentGoBackRef.current();
+        if(handled){ popLocked=false; return; }
 
-      // ContentPanel이 처리 못함
-      if(mobileViewRef.current==="content"){
-        // 모바일: 콘텐츠 → 목록
-        setMobileView("list");
-        mobileViewRef.current="list";
-        return;
-      }
+        // 모바일: 콘텐츠 패널 → 목록 패널
+        if(mobileViewRef.current==="content"){
+          setMobileView("list");
+          mobileViewRef.current="list";
+          popLocked=false; return;
+        }
 
-      // 최상위 → 종료 확인
-      const exit = await useConfirmRef.current("앱을 종료하시겠습니까?");
-      if(exit){
-        // guard + base 모두 제거 후 실제 종료
-        history.go(-2);
+        // 최상위(목록 화면) → 항상 종료 확인 팝업
+        const exit = await useConfirmRef.current("앱을 종료하시겠습니까?");
+        if(exit){
+          // 락 해제 없이 종료 → 이후 popstate 무시
+          history.go(-2);
+          return;
+        }
+      } finally {
+        popLocked=false;
       }
     };
 
