@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v5.9</title>
+  <title>환자 평가 관리 v6.0</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v5.9";
+const APP_VERSION = "v6.0";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1362,8 +1362,8 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
     setRv(nextRv);
   };
 
-  // goBackLatest ref: 매 렌더마다 최신 goBack 클로저 동기화
-  // → useEffect 의존성 누락으로 낡은 state 참조하는 버그 완전 해결
+
+  // goBack: 렌더 중 직접 ref 동기화 → useEffect 타이밍 문제 완전 제거
   const goBackLatest=React.useRef(null);
   const goBack=async()=>{
     if(rv==="eval-form"){
@@ -1378,15 +1378,16 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
     } else if(rv==="eval-history"){setEk(null);setRv("eval-select");return true;}
     else if(rv==="date-view"){setRv("eval-select");return true;}
     else if(rv==="eval-select"){
-      if(mobileViewRef.current==="content"){ onBackToList(); return true; }
+      // 모바일이면 무조건 목록으로, 태블릿이면 이미 목록이 보이므로 false
+      if(!isTablet){ onBackToList(); return true; }
       return false;
     }
     return false;
   };
-  // 매 렌더마다 최신 goBack을 ref에 동기화
+  // 렌더마다 최신 클로저 동기화 (useEffect 없이)
   goBackLatest.current=goBack;
-  // goBackRef(App → ContentPanel)도 항상 최신으로 연결
-  useEffect(()=>{ if(goBackRef) goBackRef.current=()=>goBackLatest.current(); });
+  // goBackRef: App이 기기 뒤로가기 처리 시 호출 — 렌더 중 직접 등록
+  if(goBackRef) goBackRef.current=()=>goBackLatest.current();
 
   const getRecs=(k)=>(db.records[patient?.id]?.[k]||[]).slice().sort((a,b)=>b.savedAt-a.savedAt);
   const saveRec=(k,data,rid)=>{
@@ -1793,21 +1794,23 @@ function App(){
       history.pushState({level:"guard"},"");
 
       try{
-        // ContentPanel 뒤로가기 처리 시도
-        const handled = contentGoBackRef.current && await contentGoBackRef.current();
-        if(handled){ popLocked=false; return; }
+        // ContentPanel이 마운트되어 있으면 goBack 처리 시도
+        let handled = false;
+        if(contentGoBackRef.current){
+          handled = await contentGoBackRef.current();
+        }
+        if(handled){ return; }
 
-        // 모바일: 콘텐츠 패널 → 목록 패널
+        // ContentPanel이 없거나 처리 못함 → 모바일 콘텐츠→목록 전환 시도
         if(mobileViewRef.current==="content"){
           setMobileView("list");
           mobileViewRef.current="list";
-          popLocked=false; return;
+          return;
         }
 
-        // 최상위(목록 화면) → 항상 종료 확인 팝업
+        // 모든 경우의 최상위 → 반드시 종료 확인 팝업
         const exit = await useConfirmRef.current("앱을 종료하시겠습니까?");
         if(exit){
-          // 락 해제 없이 종료 → 이후 popstate 무시
           history.go(-2);
           return;
         }
