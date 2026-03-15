@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v5.2</title>
+  <title>환자 평가 관리 v5.4</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v5.2";
+const APP_VERSION = "v5.4";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1006,7 +1006,6 @@ function DateSummaryView({db,persist,patient,templates,onEditForm}){
       try{
         await navigator.share({
           title:`${patient.name} ${d} 평가기록`,
-          text:"📄 공유 후 \"PDF로 저장\"을 선택하면 PDF로 저장됩니다.",
           files:[file]
         });
         return;
@@ -2380,7 +2379,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                     </button>
                     <button onClick={()=>{markDirty();setFd(prev=>({...prev,"_bbs":BBS_ITEMS.map(item=>item.opts[0][0])}));}}
                       style={{padding:"6px 14px",borderRadius:"9px",border:"1.5px solid #93c5fd",background:"#eff6ff",color:"#1d4ed8",fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-                      만점 (56점)
+                      56점
                     </button>
                   </>
                 )}
