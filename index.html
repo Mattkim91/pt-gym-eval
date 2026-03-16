@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.15</title>
+  <title>환자 평가 관리 v6.16</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.15";
+const APP_VERSION = "v6.16";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2468,6 +2468,10 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
             <div key={field.id} style={{...S.fieldRow, opacity: disabled ? 0.35 : 1, pointerEvents: disabled ? "none" : "auto"}}>
               <label style={S.fieldLabel}>{field.label}</label>
               <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                <button onClick={()=>resetTimer(field.id)}
+                  style={{flexShrink:0,height:"42px",padding:"0 15px",borderRadius:"9px",border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#94a3b8",fontSize:"12px",cursor:"pointer"}}>
+                  ↺
+                </button>
                 <input style={{...S.input, fontVariantNumeric:"tabular-nums", color: tm.running?"#2563eb":"#1e293b", fontWeight: tm.running?700:400}}
                   type="text" inputMode="decimal"
                   placeholder={field.placeholder}
@@ -2486,10 +2490,6 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                     ■ 정지
                   </button>
                 )}
-                <button onClick={()=>resetTimer(field.id)}
-                  style={{flexShrink:0,height:"42px",padding:"0 15px",borderRadius:"9px",border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#94a3b8",fontSize:"12px",cursor:"pointer"}}>
-                  ↺
-                </button>
               </div>
 
             </div>
@@ -2543,11 +2543,11 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
             ):(
               (field.id==="steps1"||field.id==="steps2"||field.id==="steps3")?(
                 <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-                  <input style={{...S.input}} inputMode="numeric" placeholder="" value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
                   <button onClick={()=>setF(field.id,"")}
                     style={{flexShrink:0,height:"42px",padding:"0 15px",borderRadius:"9px",border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#94a3b8",fontSize:"12px",cursor:"pointer"}}>
                     ↺
                   </button>
+                  <input style={{...S.input}} inputMode="numeric" placeholder="" value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
                 </div>
               ):(
                 <input style={{...S.input,borderColor:field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"#60a5fa":undefined, borderWidth:field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"2px":undefined}} type="text" inputMode={field.inputMode||(field.type==="number"?"decimal":undefined)} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
