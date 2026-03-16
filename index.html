@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.26</title>
+  <title>환자 평가 관리 v6.28</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.26";
+const APP_VERSION = "v6.28";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -522,7 +522,7 @@ const S={
   inputAuto:{border:"1.5px solid #bfdbfe",borderRadius:"8px",padding:"10px 12px",outline:"none",color:"#2563eb",width:"100%",maxWidth:"320px",fontSize:"16px",background:"#eff6ff",fontWeight:600},
   textarea:{border:"1.5px solid #e2e8f0",borderRadius:"8px",padding:"10px 12px",outline:"none",color:"#1e293b",minHeight:"80px",resize:"vertical",width:"100%",fontSize:"16px"},
   tblSection:{marginBottom:"16px",borderRadius:"8px",overflow:"hidden",border:"1.5px solid #e2e8f0"},
-  cellInput:{border:"1.5px solid #e2e8f0",borderRadius:"5px",padding:"5px 4px",fontSize:"14px",width:"58px",outline:"none",textAlign:"center",color:"#1e293b"},
+  cellInput:{border:"1.5px solid #e2e8f0",borderRadius:"5px",padding:"4px 2px",fontSize:"13px",width:"44px",outline:"none",textAlign:"center",color:"#1e293b"},
   errorBox:{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"10px 14px",color:"#dc2626",fontSize:"12px",marginBottom:"12px"},
 };
 
@@ -1601,14 +1601,14 @@ function RomGoniometerPopup({onClose, onInsert}){
   const [running, setRunning] = React.useState(false);
   const [frozen, setFrozen] = React.useState(null);
   const [status, setStatus] = React.useState("시작 버튼을 누르세요");
-  const baseRef = React.useRef(null);
+  const baseRef = React.useRef(null);   // {beta, gamma} 시작 시점
+  const axisRef = React.useRef(null);   // "beta" | "gamma" 고정 축
   const handlerRef = React.useRef(null);
   const canvasRef = React.useRef(null);
   const angleRef = React.useRef(0);
 
   const round5=(v)=>Math.round(v/5)*5;
 
-  // Canvas 각도기 그리기
   const drawGonio=(cvs, currentAngle, isFrozen)=>{
     if(!cvs) return;
     const ctx=cvs.getContext("2d");
@@ -1618,7 +1618,7 @@ function RomGoniometerPopup({onClose, onInsert}){
 
     ctx.clearRect(0,0,W,H);
 
-    // 배경 부채꼴 (0~180도)
+    // 배경 부채꼴
     ctx.beginPath();
     ctx.moveTo(cx,cy);
     ctx.arc(cx,cy,R,Math.PI,0,false);
@@ -1629,15 +1629,14 @@ function RomGoniometerPopup({onClose, onInsert}){
     ctx.lineWidth=1.5;
     ctx.stroke();
 
-    // 내부 원 (흰색)
+    // 내부 원
     ctx.beginPath();
     ctx.arc(cx,cy,R*0.35,0,Math.PI*2);
     ctx.fillStyle="#fff";
     ctx.fill();
 
-    // 눈금 및 숫자
-    const ticks=[0,30,45,60,90,120,135,150,180];
-    ticks.forEach(deg=>{
+    // 눈금
+    [0,30,45,60,90,120,135,150,180].forEach(deg=>{
       const rad=Math.PI-(deg*Math.PI/180);
       const isMajor=deg%30===0;
       const tickLen=isMajor?12:7;
@@ -1645,110 +1644,101 @@ function RomGoniometerPopup({onClose, onInsert}){
       const y1=cy+R*0.92*Math.sin(rad);
       const x2=cx+(R*0.92-tickLen)*Math.cos(rad);
       const y2=cy+(R*0.92-tickLen)*Math.sin(rad);
-      ctx.beginPath();
-      ctx.moveTo(x1,y1);
-      ctx.lineTo(x2,y2);
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
       ctx.strokeStyle=isMajor?"#64748b":"#cbd5e1";
-      ctx.lineWidth=isMajor?1.5:1;
-      ctx.stroke();
+      ctx.lineWidth=isMajor?1.5:1; ctx.stroke();
       if(isMajor){
-        const tx=cx+(R*0.75)*Math.cos(rad);
-        const ty=cy+(R*0.75)*Math.sin(rad);
+        const tx=cx+R*0.75*Math.cos(rad);
+        const ty=cy+R*0.75*Math.sin(rad);
         ctx.fillStyle="#64748b";
         ctx.font="bold 11px -apple-system,sans-serif";
-        ctx.textAlign="center";
-        ctx.textBaseline="middle";
+        ctx.textAlign="center"; ctx.textBaseline="middle";
         ctx.fillText(deg+"°",tx,ty);
       }
     });
 
-    // 색칠된 부채꼴 (측정 범위)
-    const dispAngle=Math.min(Math.max(currentAngle,0),180);
-    if(dispAngle>0){
-      const startRad=Math.PI;
-      const endRad=Math.PI-(dispAngle*Math.PI/180);
-      ctx.beginPath();
-      ctx.moveTo(cx,cy);
-      ctx.arc(cx,cy,R*0.88,startRad,endRad,false);
+    // 색칠 범위
+    const disp=Math.min(Math.max(currentAngle,0),180);
+    if(disp>0){
+      ctx.beginPath(); ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,R*0.88,Math.PI,Math.PI-(disp*Math.PI/180),false);
       ctx.closePath();
       ctx.fillStyle=isFrozen?"rgba(37,99,235,0.12)":"rgba(239,68,68,0.1)";
       ctx.fill();
     }
 
-    // 빨간 바늘 (기준 = 항상 0° 위치)
+    // 빨간 바늘 (0° 고정)
     const redRad=Math.PI;
-    ctx.beginPath();
-    ctx.moveTo(cx,cy);
+    ctx.beginPath(); ctx.moveTo(cx,cy);
     ctx.lineTo(cx+R*0.85*Math.cos(redRad), cy+R*0.85*Math.sin(redRad));
-    ctx.strokeStyle="#ef4444";
-    ctx.lineWidth=2.5;
-    ctx.lineCap="round";
-    ctx.stroke();
-    // 빨간 바늘 끝 원
+    ctx.strokeStyle="#ef4444"; ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.stroke();
     ctx.beginPath();
-    ctx.arc(cx+R*0.85*Math.cos(redRad), cy+R*0.85*Math.sin(redRad), 4, 0, Math.PI*2);
-    ctx.fillStyle="#ef4444";
-    ctx.fill();
+    ctx.arc(cx+R*0.85*Math.cos(redRad), cy+R*0.85*Math.sin(redRad),4,0,Math.PI*2);
+    ctx.fillStyle="#ef4444"; ctx.fill();
 
     // 파란 바늘 (현재 각도)
-    const blueRad=Math.PI-(dispAngle*Math.PI/180);
-    ctx.beginPath();
-    ctx.moveTo(cx,cy);
+    const blueRad=Math.PI-(disp*Math.PI/180);
+    ctx.beginPath(); ctx.moveTo(cx,cy);
     ctx.lineTo(cx+R*0.85*Math.cos(blueRad), cy+R*0.85*Math.sin(blueRad));
     ctx.strokeStyle=isFrozen?"#2563eb":"#3b82f6";
-    ctx.lineWidth=isFrozen?3:2.5;
-    ctx.lineCap="round";
-    ctx.stroke();
-    // 파란 바늘 끝 원
+    ctx.lineWidth=isFrozen?3:2.5; ctx.lineCap="round"; ctx.stroke();
     ctx.beginPath();
-    ctx.arc(cx+R*0.85*Math.cos(blueRad), cy+R*0.85*Math.sin(blueRad), 4, 0, Math.PI*2);
-    ctx.fillStyle=isFrozen?"#2563eb":"#3b82f6";
-    ctx.fill();
+    ctx.arc(cx+R*0.85*Math.cos(blueRad), cy+R*0.85*Math.sin(blueRad),4,0,Math.PI*2);
+    ctx.fillStyle=isFrozen?"#2563eb":"#3b82f6"; ctx.fill();
 
-    // 중심 원
-    ctx.beginPath();
-    ctx.arc(cx,cy,7,0,Math.PI*2);
-    ctx.fillStyle="#334155";
-    ctx.fill();
+    // 중심
+    ctx.beginPath(); ctx.arc(cx,cy,7,0,Math.PI*2);
+    ctx.fillStyle="#334155"; ctx.fill();
 
-    // 각도 숫자 (중앙)
-    const rounded=round5(dispAngle);
+    // 각도 숫자
     ctx.fillStyle=isFrozen?"#2563eb":"#1e293b";
     ctx.font="bold 22px -apple-system,sans-serif";
-    ctx.textAlign="center";
-    ctx.textBaseline="middle";
-    ctx.fillText(rounded+"°", cx, cy-R*0.45);
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(round5(disp)+"°", cx, cy-R*0.45);
   };
 
   React.useEffect(()=>{
     drawGonio(canvasRef.current, angle, frozen!=null);
   },[angle, frozen]);
 
-  const startMeasure=(initRaw)=>{
-    baseRef.current=initRaw;
+  const startMeasure=(initBeta, initGamma)=>{
+    // 시작 시점에 어느 축이 더 변화가 큰지 고정
+    // 폰을 세로로 들면 beta가 주축, 가로로 들면 gamma가 주축
+    // abs(beta)가 크면 beta 축 사용
+    const axis=Math.abs(initBeta)>=Math.abs(initGamma)?"beta":"gamma";
+    axisRef.current=axis;
+    baseRef.current={beta:initBeta, gamma:initGamma};
+
     const h=(e)=>{
       const b=e.beta!=null?e.beta:0;
       const g=e.gamma!=null?e.gamma:0;
-      const raw=Math.abs(b)>=Math.abs(g)?b:g;
-      const delta=Math.min(Math.abs(raw-baseRef.current),180);
-      angleRef.current=delta;
-      setAngle(delta);
+      // 고정된 축의 변화량 계산 (절대값으로 각도 = 항상 양수)
+      let delta;
+      if(axisRef.current==="beta"){
+        delta=b-(baseRef.current.beta);
+      } else {
+        delta=g-(baseRef.current.gamma);
+      }
+      // 절대값 + 0~180 클램프
+      const deg=Math.min(Math.abs(delta),180);
+      angleRef.current=deg;
+      setAngle(deg);
     };
     handlerRef.current=h;
     window.addEventListener("deviceorientation",h,true);
     setFrozen(null);
     setAngle(0);
+    angleRef.current=0;
     setRunning(true);
-    setStatus("기기를 기울여 각도를 측정하세요");
+    setStatus("기기를 기울여 각도를 측정하세요 (축: "+axis+")");
   };
 
   const doStart=()=>{
     const tmp=(e)=>{
       const b=e.beta!=null?e.beta:0;
       const g=e.gamma!=null?e.gamma:0;
-      const raw=Math.abs(b)>=Math.abs(g)?b:g;
       window.removeEventListener("deviceorientation",tmp,true);
-      startMeasure(raw);
+      startMeasure(b,g);
     };
     window.addEventListener("deviceorientation",tmp,true);
     setStatus("센서 연결 중...");
@@ -1781,6 +1771,7 @@ function RomGoniometerPopup({onClose, onInsert}){
     setFrozen(null);
     angleRef.current=0;
     baseRef.current=null;
+    axisRef.current=null;
     if(handlerRef.current){
       window.removeEventListener("deviceorientation",handlerRef.current,true);
       handlerRef.current=null;
@@ -1791,8 +1782,7 @@ function RomGoniometerPopup({onClose, onInsert}){
   const insert=()=>{
     const val=frozen!=null?frozen:angle;
     onInsert(String(round5(val)));
-    reset();
-    onClose();
+    reset(); onClose();
   };
 
   React.useEffect(()=>{
@@ -1803,6 +1793,8 @@ function RomGoniometerPopup({onClose, onInsert}){
     };
   },[]);
 
+  const display=frozen!=null?frozen:angle;
+
   return ReactDOM.createPortal(
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:9000,
       display:"flex",alignItems:"center",justifyContent:"center",
@@ -1810,7 +1802,6 @@ function RomGoniometerPopup({onClose, onInsert}){
       <div onClick={e=>e.stopPropagation()}
         style={{width:"300px",background:"#fff",borderRadius:"20px",
           boxShadow:"0 8px 32px rgba(0,0,0,0.3)",overflow:"hidden"}}>
-        {/* 헤더 */}
         <div style={{background:"#16a34a",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <span style={{color:"#fff",fontWeight:800,fontSize:"15px"}}>📐 각도기</span>
           <button onClick={onClose}
@@ -1819,15 +1810,11 @@ function RomGoniometerPopup({onClose, onInsert}){
             닫기
           </button>
         </div>
-        {/* Canvas 각도기 */}
         <div style={{padding:"12px 16px 4px",background:"#fff"}}>
-          <canvas ref={canvasRef} width={268} height={150}
-            style={{width:"100%",display:"block"}}/>
+          <canvas ref={canvasRef} width={268} height={150} style={{width:"100%",display:"block"}}/>
         </div>
-        {/* 상태 텍스트 */}
         <div style={{textAlign:"center",fontSize:"12px",color:"#64748b",
           padding:"2px 16px 8px",minHeight:"18px"}}>{status}</div>
-        {/* 버튼 */}
         <div style={{display:"flex",gap:"10px",padding:"4px 16px 18px"}}>
           <button onClick={reset}
             style={{width:"58px",height:"60px",borderRadius:"14px",border:"1.5px solid #e2e8f0",
@@ -1861,6 +1848,7 @@ function RomGoniometerPopup({onClose, onInsert}){
     document.body
   );
 }
+
 
 
 function BbsFloatingTimer({onClose}){
@@ -2471,18 +2459,18 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                           return(
                             <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
                               <td style={{...S.td,textAlign:"center"}}>
-                                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"3px"}}>
+                                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"2px"}}>
                                   <input style={S.cellInput} inputMode="decimal" value={romData[key]?.right||""} onChange={e=>{markDirty();setRom(si,ri,"right",e.target.value.replace(/[^0-9().+\-]/g,""));}} placeholder="°"/>
-                                  <button onTouchStart={e=>e.preventDefault()} onMouseDown={e=>{e.preventDefault();appendHyphen(si,ri,"right");}} style={{flexShrink:0,width:"22px",height:"32px",border:"1.5px solid #cbd5e1",borderRadius:"5px",background:"#f8fafc",color:"#475569",fontSize:"14px",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>-</button>
-                                  <button onClick={()=>setGonioTarget({si,ri,side:"right",setRom})} style={{flexShrink:0,width:"22px",height:"32px",border:"1.5px solid #bbf7d0",borderRadius:"5px",background:"#f0fdf4",color:"#16a34a",fontSize:"11px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>📐</button>
+                                  <button onTouchStart={e=>e.preventDefault()} onMouseDown={e=>{e.preventDefault();appendHyphen(si,ri,"right");}} style={{flexShrink:0,width:"18px",height:"28px",border:"1.5px solid #cbd5e1",borderRadius:"5px",background:"#f8fafc",color:"#475569",fontSize:"12px",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>-</button>
+                                  <button onClick={()=>setGonioTarget({si,ri,side:"right",setRom})} style={{flexShrink:0,width:"18px",height:"28px",border:"1.5px solid #bbf7d0",borderRadius:"5px",background:"#f0fdf4",color:"#16a34a",fontSize:"10px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>📐</button>
                                 </div>
                               </td>
                               <td style={{...S.td,fontSize:"11px",color:"#475569",textAlign:"center",wordBreak:"break-word",lineHeight:1.4}}>{row}</td>
                               <td style={{...S.td,textAlign:"center"}}>
-                                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"3px"}}>
+                                <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"2px"}}>
                                   <input style={S.cellInput} inputMode="decimal" value={romData[key]?.left||""} onChange={e=>{markDirty();setRom(si,ri,"left",e.target.value.replace(/[^0-9().+\-]/g,""));}} placeholder="°"/>
-                                  <button onTouchStart={e=>e.preventDefault()} onMouseDown={e=>{e.preventDefault();appendHyphen(si,ri,"left");}} style={{flexShrink:0,width:"22px",height:"32px",border:"1.5px solid #cbd5e1",borderRadius:"5px",background:"#f8fafc",color:"#475569",fontSize:"14px",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>-</button>
-                                  <button onClick={()=>setGonioTarget({si,ri,side:"left",setRom})} style={{flexShrink:0,width:"22px",height:"32px",border:"1.5px solid #bbf7d0",borderRadius:"5px",background:"#f0fdf4",color:"#16a34a",fontSize:"11px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>📐</button>
+                                  <button onTouchStart={e=>e.preventDefault()} onMouseDown={e=>{e.preventDefault();appendHyphen(si,ri,"left");}} style={{flexShrink:0,width:"18px",height:"28px",border:"1.5px solid #cbd5e1",borderRadius:"5px",background:"#f8fafc",color:"#475569",fontSize:"12px",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>-</button>
+                                  <button onClick={()=>setGonioTarget({si,ri,side:"left",setRom})} style={{flexShrink:0,width:"18px",height:"28px",border:"1.5px solid #bbf7d0",borderRadius:"5px",background:"#f0fdf4",color:"#16a34a",fontSize:"10px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>📐</button>
                                 </div>
                               </td>
                             </tr>
