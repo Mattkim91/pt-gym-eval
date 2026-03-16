@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.5</title>
+  <title>환자 평가 관리 v6.8</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -50,10 +50,10 @@
     .layout-shell { display: flex; flex-direction: column; height: 100vh; height: -webkit-fill-available; height: 100dvh; }
     .topbar { position: sticky; top: 0; z-index: 100; background: #fff; border-bottom: 1.5px solid #e2e8f0; padding: 0 16px; height: 52px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.05); flex-shrink: 0; }
     .main-area { flex: 1; overflow: hidden; display: flex; }
-    .panel-left  { width: 100%; height: 100%; overflow-y: auto; }
+    .panel-left  { width: 100%; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
     .panel-right { display: none; }
     @media (min-width: 768px) {
-      .panel-left  { width: 300px; min-width: 260px; max-width: 320px; border-right: 1.5px solid #e2e8f0; background: #fff; flex-shrink: 0; }
+      .panel-left  { width: 300px; min-width: 260px; max-width: 320px; border-right: 1.5px solid #e2e8f0; background: #fff; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; }
       .panel-right { display: block; flex: 1; overflow: hidden; background: #f4f7fb; }
     }
     .panel-scroll { height: 100%; overflow-y: auto; }
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.5";
+const APP_VERSION = "v6.8";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1595,111 +1595,109 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
   );
 }
 
-
-// BBS 스톱워치 컴포넌트
-function BbsTimer({milestones}){
-  const [elapsed, setElapsed]=React.useState(0);       // 현재 경과 초
-  const [running, setRunning]=React.useState(false);
-  const [reached, setReached]=React.useState([]);       // 통과한 milestone 인덱스
-  const intervalRef=React.useRef(null);
-  const startRef=React.useRef(0);
-  const baseRef=React.useRef(0);                        // 일시정지 누적 시간
+// BBS 플로팅 타이머 컴포넌트
+function BbsFloatingTimer({onClose}){
+  const [elapsed, setElapsed] = React.useState(0);
+  const [running, setRunning] = React.useState(false);
+  const intervalRef = React.useRef(null);
+  const startRef = React.useRef(0);
+  const baseRef = React.useRef(0);
+  const runningRef = React.useRef(false);
 
   const fmt=(s)=>{
-    const m=Math.floor(s/60);
-    const sec=Math.floor(s%60);
-    return m>0?`${m}분`:`${sec}초`;
-  };
-  const fmtElapsed=(s)=>{
     const m=Math.floor(s/60);
     const sec=(s%60).toFixed(1);
     return m>0?`${m}분 ${sec}초`:`${sec}초`;
   };
 
-  const start=()=>{
+  const startInterval=()=>{
+    clearInterval(intervalRef.current);
     startRef.current=Date.now();
     intervalRef.current=setInterval(()=>{
-      const now=(Date.now()-startRef.current)/1000+baseRef.current;
-      setElapsed(now);
-      // milestone 통과 체크
-      milestones.forEach((ms,i)=>{
-        if(now>=ms){
-          setReached(prev=>prev.includes(i)?prev:[...prev,i]);
-          // 진동 (처음 통과 시만)
-          try{ if(!reached.includes(i)) navigator.vibrate&&navigator.vibrate(200); }catch{}
-        }
-      });
+      setElapsed((Date.now()-startRef.current)/1000+baseRef.current);
     },50);
-    setRunning(true);
   };
 
+  const start=()=>{
+    startInterval();
+    runningRef.current=true;
+    setRunning(true);
+  };
   const stop=()=>{
     clearInterval(intervalRef.current);
     baseRef.current=(Date.now()-startRef.current)/1000+baseRef.current;
+    runningRef.current=false;
     setRunning(false);
   };
-
   const reset=()=>{
     clearInterval(intervalRef.current);
     setElapsed(0);
+    runningRef.current=false;
     setRunning(false);
-    setReached([]);
     baseRef.current=0;
   };
 
-  React.useEffect(()=>()=>clearInterval(intervalRef.current),[]);
+  // iOS 백그라운드 복귀 시 interval 재시작
+  React.useEffect(()=>{
+    const onVisibility=()=>{
+      if(document.visibilityState==="visible" && runningRef.current){
+        startInterval();
+      }
+    };
+    document.addEventListener("visibilitychange",onVisibility);
+    return()=>{
+      document.removeEventListener("visibilitychange",onVisibility);
+      clearInterval(intervalRef.current);
+    };
+  },[]);
 
-  return(
-    <div style={{display:"flex",alignItems:"center",gap:"5px",flexShrink:0}}>
-      {/* milestone 뱃지들 */}
-      <div style={{display:"flex",gap:"3px",flexWrap:"wrap",justifyContent:"flex-end"}}>
-        {milestones.map((ms,i)=>{
-          const done=reached.includes(i);
-          return(
-            <span key={i} style={{fontSize:"10px",fontWeight:700,padding:"2px 6px",borderRadius:"20px",
-              background:done?"#16a34a":"#e2e8f0",
-              color:done?"#fff":"#94a3b8",
-              border:`1px solid ${done?"#16a34a":"#cbd5e1"}`,
-              transition:"all 0.3s",whiteSpace:"nowrap"}}>
-              {fmt(ms)}
-            </span>
-          );
-        })}
+  return ReactDOM.createPortal(
+    <>
+      <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:599}}/>
+      <div onClick={e=>e.stopPropagation()}
+        style={{position:"fixed",right:"20px",bottom:"90px",zIndex:600,width:"240px",
+          background:"#fff",borderRadius:"20px",boxShadow:"0 8px 32px rgba(0,0,0,0.22)",
+          border:"1.5px solid #c4b5fd",overflow:"hidden"}}>
+        <div style={{background:"#6d28d9",padding:"12px 16px"}}>
+          <span style={{color:"#fff",fontWeight:800,fontSize:"15px"}}>⏱ BBS 타이머</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",padding:"16px 12px 8px",gap:"8px"}}>
+          <div style={{flex:1,fontSize:"40px",fontWeight:800,textAlign:"center",
+            color:running?"#2563eb":"#1e293b",fontVariantNumeric:"tabular-nums",letterSpacing:"1px"}}>
+            {fmt(elapsed)}
+          </div>
+          <button onClick={onClose}
+            style={{width:"56px",height:"56px",borderRadius:"12px",border:"1.5px solid #e2e8f0",
+              background:"#f8fafc",color:"#94a3b8",fontSize:"13px",fontWeight:600,cursor:"pointer",flexShrink:0}}>
+            닫기
+          </button>
+        </div>
+        <div style={{display:"flex",gap:"8px",padding:"0 12px 14px"}}>
+          {!running?(
+            <button onClick={start}
+              style={{flex:1,height:"56px",borderRadius:"12px",border:"2px solid #8b5cf6",
+                background:"#f3eeff",color:"#6d28d9",fontSize:"20px",fontWeight:700,cursor:"pointer"}}>
+              ▶ 시작
+            </button>
+          ):(
+            <button onClick={stop}
+              style={{flex:1,height:"56px",borderRadius:"12px",border:"2px solid #ef4444",
+                background:"#fef2f2",color:"#ef4444",fontSize:"20px",fontWeight:700,cursor:"pointer"}}>
+              ■ 정지
+            </button>
+          )}
+          <button onClick={reset}
+            style={{width:"56px",height:"56px",borderRadius:"12px",border:"1.5px solid #e2e8f0",
+              background:"#f8fafc",color:"#94a3b8",fontSize:"20px",cursor:"pointer",flexShrink:0}}>
+            ↺
+          </button>
+        </div>
       </div>
-      {/* 경과 시간 */}
-      {(running||elapsed>0)&&(
-        <span style={{fontSize:"12px",fontWeight:800,color:running?"#2563eb":"#475569",
-          fontVariantNumeric:"tabular-nums",minWidth:"28px",textAlign:"right"}}>
-          {fmtElapsed(elapsed)}
-        </span>
-      )}
-      {/* 버튼 */}
-      {!running?(
-        <button onClick={e=>{e.stopPropagation();elapsed>0?start():start();}}
-          style={{flexShrink:0,width:"28px",height:"28px",borderRadius:"50%",border:"1.5px solid #8b5cf6",
-            background:"#f3eeff",color:"#6d28d9",fontSize:"13px",cursor:"pointer",
-            display:"flex",alignItems:"center",justifyContent:"center"}}>
-          ▶
-        </button>
-      ):(
-        <button onClick={e=>{e.stopPropagation();stop();}}
-          style={{flexShrink:0,width:"28px",height:"28px",borderRadius:"50%",border:"1.5px solid #ef4444",
-            background:"#fef2f2",color:"#ef4444",fontSize:"11px",cursor:"pointer",
-            display:"flex",alignItems:"center",justifyContent:"center"}}>
-          ■
-        </button>
-      )}
-      {elapsed>0&&!running&&(
-        <button onClick={e=>{e.stopPropagation();reset();}}
-          style={{flexShrink:0,width:"28px",height:"28px",borderRadius:"50%",border:"1.5px solid #e2e8f0",
-            background:"#f8fafc",color:"#94a3b8",fontSize:"13px",cursor:"pointer",
-            display:"flex",alignItems:"center",justifyContent:"center"}}>
-          ↺
-        </button>
-      )}
-    </div>
+    </>,
+    document.body
   );
 }
+
 
 function MmtSelect({value, onChange}){
   const [open,setOpen]=React.useState(false);
@@ -2015,6 +2013,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
   };
   const [fd,setFd]=useState(()=>initialData?JSON.parse(JSON.stringify(initialData)):buildInit());
   const [isDirty,setIsDirty]=useState(false);
+  const [showBbsTimer,setShowBbsTimer]=useState(false);
   const markDirty=()=>{ setIsDirty(true); if(dirtyRef) dirtyRef.current=true; };
   const setF=(id,val)=>{markDirty();setFd(prev=>({...prev,[id]:val}));};
   const setCell=(tid,ri,ck,val)=>{markDirty();setFd(prev=>{const arr=[...(prev[tid]||[])];arr[ri]={...arr[ri],[ck]:val};return{...prev,[tid]:arr};});};
@@ -2349,14 +2348,9 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
             <div key={field.id}>
               {BBS_ITEMS.map((item,ri)=>{
                 const selected=scores[ri];
-                const hasTimer=!!(item.timers&&item.timers.length>0);
                 return(
                   <div key={ri} style={{marginBottom:"20px"}}>
-                    {/* 항목 헤더 */}
-                    <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px",padding:"8px 12px",background:"#ede9ff",borderRadius:"8px",borderLeft:"4px solid #8b5cf6"}}>
-                      <span style={{fontSize:"14px",fontWeight:800,color:"#3b1d8a",flex:1,lineHeight:1.4}}>{item.label}</span>
-                      {hasTimer&&<BbsTimer milestones={item.timers}/>}
-                    </div>
+                    <div style={{fontSize:"14px",fontWeight:800,color:"#3b1d8a",marginBottom:"8px",padding:"8px 12px",background:"#ede9ff",borderRadius:"8px",borderLeft:"4px solid #8b5cf6",lineHeight:1.4}}>{item.label}</div>
                     {item.opts.map(([score,desc])=>{
                       const on=selected===score;
                       return(
@@ -2483,12 +2477,12 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                 />
                 {!tm.running?(
                   <button onClick={()=>startTimer(field.id)}
-                    style={{flexShrink:0,height:"42px",padding:"0 14px",borderRadius:"9px",border:`1.5px solid ${col.accent}`,background:col.bg,color:col.accent,fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    style={{flexShrink:0,height:"84px",padding:"0 28px",borderRadius:"14px",border:`2px solid ${col.accent}`,background:col.bg,color:col.accent,fontSize:"22px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                     ▶ 시작
                   </button>
                 ):(
                   <button onClick={()=>stopTimer(field.id)}
-                    style={{flexShrink:0,height:"42px",padding:"0 14px",borderRadius:"9px",border:"1.5px solid #ef4444",background:"#fef2f2",color:"#ef4444",fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    style={{flexShrink:0,height:"84px",padding:"0 28px",borderRadius:"14px",border:"2px solid #ef4444",background:"#fef2f2",color:"#ef4444",fontSize:"22px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                     ■ 정지
                   </button>
                 )}
@@ -2563,6 +2557,20 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
         );
       })}
     </div>
+    {/* BBS 타이머 플로팅 버튼 */}
+    {template?.fields?.some(f=>f.type==="bbs_full")&&(
+      <>
+        {showBbsTimer&&<BbsFloatingTimer onClose={()=>setShowBbsTimer(false)}/>}
+        <div onClick={()=>setShowBbsTimer(v=>!v)}
+          style={{position:"fixed",right:"20px",bottom:"84px",zIndex:500,width:"48px",height:"48px",borderRadius:"50%",
+            background:showBbsTimer?"#6d28d9":"#f3eeff",border:"2px solid #8b5cf6",
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:"22px",cursor:"pointer",boxShadow:"0 4px 14px rgba(109,40,217,0.3)",
+            WebkitTapHighlightColor:"transparent"}}>
+          ⏱
+        </div>
+      </>
+    )}
     {/* 플로팅 저장 버튼 - 좌측 하단 뒤로가기 버튼 오른쪽 */}
     <div style={{position:"fixed",right:"20px",bottom:"24px",zIndex:500,display:"flex",alignItems:"center",gap:"6px",background:col.accent,borderRadius:"28px",padding:"13px 24px",fontSize:"14px",fontWeight:700,color:"#fff",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.2)",WebkitTapHighlightColor:"transparent"}} onClick={handleSave}>
       {isDirty&&<span style={{width:"7px",height:"7px",borderRadius:"50%",background:"rgba(255,255,255,0.7)",display:"inline-block",flexShrink:0}}/>}
