@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.1</title>
+  <title>환자 평가 관리 v6.5</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -84,98 +84,98 @@ const ROM_SECTIONS = [
 ];
 
 const BBS_ITEMS = [
-  { label:"1. 앉은 자세에서 일어나기 (Sitting to Standing)", opts:[
+  { label:"1. 앉은 자세에서 일어나기", opts:[
     [4,"손의 사용 없이 일어 설 수 있으며, 독립적으로 안정성을 갖고 서 있을 수 있다"],
     [3,"손을 사용하여 스스로 일어설 수 있다"],
     [2,"몇 번의 시도 후에 손을 사용하여 일어설 수 있다"],
     [1,"일어서거나 안정성 있게 서 있기 위하여 최소한(minimal)의 도움이 필요하다"],
     [0,"일어 서기 위해 중증도(moderate) 또는 최대한(maximal)의 도움이 필요하다"],
   ]},
-  { label:"2. 지지(보조) 없이 서 있기 (Standing Unsupported)", opts:[
+  { label:"2. 지지(보조) 없이 서 있기", timers:[30, 120], opts:[
     [4,"2분 동안 안정감 있게 서 있을 수 있다"],
     [3,"감독 하에 2분 동안 서 있을 수 있다"],
     [2,"지지 없이 30초 동안 서 있을 수 있다"],
     [1,"몇 번의 시도 후, 지지 없이 30초 동안 서 있을 수 있다"],
     [0,"지지 없이는 30초 동안 서 있을 수 없다"],
   ]},
-  { label:"3. 등받이 지지 없이 앉기 (Sitting Unsupported)", opts:[
+  { label:"3. 등받이 지지 없이 앉기", timers:[10, 30, 120], opts:[
     [4,"2분 동안 안정성 있게 앉아 있을 수 있다"],
     [3,"감독 하에 2분 동안 앉아 있을 수 있다"],
     [2,"30초 동안 앉아 있을 수 있다"],
     [1,"10초 동안 앉아 있을 수 있다"],
     [0,"지지 없이 10초 동안 앉아 있을 수 없다"],
   ]},
-  { label:"4. 서있는 자세에서 앉기 (Standing to Sitting)", opts:[
+  { label:"4. 서있는 자세에서 앉기", opts:[
     [4,"최소한(minimal)으로 손을 사용하여 앉을 수 있다"],
     [3,"손을 사용하여 몸을 잘 조절하여 앉는다"],
     [2,"앉는 것을 조절하기 위하여 양발을 의자 뒤쪽으로 옮겨 놓는다"],
     [1,"스스로 앉을 수는 있으나, 몸을 잘 조절하지 못한다"],
     [0,"앉기 위해 보조가 필요하다"],
   ]},
-  { label:"5. 이동 (Transfer)", opts:[
+  { label:"5. 이동", opts:[
     [4,"최소한으로 손을 사용하여 안정적으로 이동할 수 있다"],
     [3,"손에 의지하여 안정성 있게 이동할 수 있다"],
     [2,"감독 또는 언어적인 지시(verbal cue)에 의해 이동할 수 있다"],
     [1,"이동하기 위해 한명의 보조자가 필요하다"],
     [0,"이동하기 위해 두 명의 보조자가 필요하다"],
   ]},
-  { label:"6. 눈 감고 지지 없이 서 있기 (Standing Unsupported with Eyes Closed)", opts:[
+  { label:"6. 눈 감고 지지 없이 서 있기", timers:[3, 10], opts:[
     [4,"10초 동안 안정적으로 서 있을 수 있다"],
     [3,"감독 하에 10초 동안 서 있을 수 있다"],
     [2,"3초 동안 눈을 감고 서 있을 수 있다"],
     [1,"3초동안 눈을 감은채 유지할 수 없지만 안정적이다"],
     [0,"넘어질 위험이 있어 도움이 필요하다"],
   ]},
-  { label:"7. 두발 모으고 서 있기 (Standing Unsupported with Feet Together)", opts:[
+  { label:"7. 두발 모으고 서 있기", timers:[15, 30, 60], opts:[
     [4,"스스로 두 발을 모으고 안정적으로 1분 동안 서 있을 수 있다"],
     [3,"스스로 두 발을 모으고 감독 하에 1분 동안 서 있을 수 있다"],
     [2,"스스로 두 발을 모으고 30초 동안 유지할 수 있다"],
     [1,"두 발을 모으고 15초 동안 서 있을 수 있으나 도움이 필요하다"],
     [0,"자세를 취하기 위해 도움이 필요하며, 15초 동안 서 있을 수 없다"],
   ]},
-  { label:"8. 서있는 자세에서 팔 앞으로 뻗기 (Reaching Forward with Outstretched Arm)", opts:[
+  { label:"8. 서있는 자세에서 팔 앞으로 뻗기", opts:[
     [4,"25cm이상 자신 있게 뻗을 수 있다"],
     [3,"12.5cm 이상 안전하게 뻗을 수 있다"],
     [2,"5cm 이상 안전하게 뻗을 수 있다"],
     [1,"앞으로 뻗을 수 있으나 감독이 필요하다"],
     [0,"앞으로 뻗기 동작을 시도하는 도중 균형을 잃거나 보조가 필요하다"],
   ]},
-  { label:"9. 서있는 자세에서 바닥에 있는 물체 집어 올리기 (Retrieving Object from Floor)", opts:[
+  { label:"9. 서있는 자세에서 바닥에 있는 물체 집어 올리기", opts:[
     [4,"안전하고 쉽게 신발을 집어 올릴 수 있다"],
     [3,"감독 하에 신발을 집어 올릴 수 있다"],
     [2,"집어 올릴 수는 없으나 균형을 유지하여 신발 근처 2~5cm 까지 이른다"],
     [1,"신발을 집어 올릴 수 없으며, 수행하는 동안 감독이 필요하다"],
     [0,"집어 올릴 수 없으며, 수행하는 동안 균형을 잃는다"],
   ]},
-  { label:"10. 서있는 자세에서 뒤에 있는 물체 보기 (Turning to Look Behind)", opts:[
+  { label:"10. 서있는 자세에서 뒤에 있는 물체 보기", opts:[
     [4,"양쪽으로 회전하여 뒤에 있는 물체를 잘 볼 수 있으며, 체중이동이 잘 된다"],
     [3,"오직 한쪽 뒤에 있는 물체를 볼 수 있고 체중이동도 조금 감소함을 보인다"],
     [2,"옆으로만 회전할 수 있으나 균형은 잘 유지한다"],
     [1,"회전할 때 감독이 필요하다"],
     [0,"동작 수행 시 균형을 잃거나 넘어지는 것을 방지하기 위해 보조가 필요하다"],
   ]},
-  { label:"11. 360도 회전하기 (Turning 360 Degrees)", opts:[
+  { label:"11. 360도 회전하기", timers:[4], opts:[
     [4,"4초 또는 그 안에 양쪽 방향으로 360도 회전할 수 있다"],
     [3,"4초 또는 그 안에 오직 한 방향으로 360도 회전할 수 있다"],
     [2,"느리지만 안전하게 360도 회전할 수 있다"],
     [1,"동작 수행 시 감독 또는 언어적인 지시가 필요하다"],
     [0,"회전 하는 동안 보조가 필요하다"],
   ]},
-  { label:"12. 발판위에 교대로 발 바꾸기 (Placing Alternate Foot on Stool)", opts:[
+  { label:"12. 발판위에 교대로 발 바꾸기", timers:[20], opts:[
     [4,"스스로 서서 안전하게 20초 내에 발을 8번 바꿀 수 있다"],
     [3,"스스로 서서 20초를 넘겨서 8번을 완전히 바꿀 수 있다"],
     [2,"보조나 감독 없이 4번 바꿀 수 있다"],
     [1,"최소한의 도움으로 2번 바꿀 수 있다"],
     [0,"넘어지는 것을 방지하기 위해 보조가 필요하거나 동작을 수행할 수 없다"],
   ]},
-  { label:"13. 한발 앞으로 내밀어 지지하기 (Standing with One Foot in Front)", opts:[
+  { label:"13. 한발 앞으로 내밀어 지지하기", timers:[15, 30], opts:[
     [4,"30초 동안 스스로 발을 직렬로 놓고 유지할 수 있다"],
     [3,"30초 동안 스스로 다른 쪽 발 앞에 발을 내딛고 유지할 수 있다"],
     [2,"발을 조금 내딛고 30초 동안 유지할 수 있다"],
     [1,"발을 내딛기 위해 도움이 필요하나 15초 동안 유지할 수 있다"],
     [0,"서 있는 동안 또는 내딛는 동안 균형을 잃는다"],
   ]},
-  { label:"14. 한 발로 서있기 (Standing on One Leg)", opts:[
+  { label:"14. 한 발로 서있기", timers:[3, 5, 10], opts:[
     [4,"스스로 한발로 10초 이상 서있을 수 있다"],
     [3,"스스로 한발로 5-10초 동안 서 있을 수 있다"],
     [2,"스스로 한발로 3초 동안 서 있을 수 있다"],
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.1";
+const APP_VERSION = "v6.5";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -793,7 +793,7 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
     </div></div>
 
     {/* 하단 고정 영역: 신규등록폼 + 검색 + 신환 버튼 */}
-    <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",padding:"10px 14px",display:"flex",flexDirection:"column",gap:"8px",boxShadow:"0 -2px 10px rgba(0,0,0,0.06)"}}>
+    <div style={{flexShrink:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",padding:"10px 14px",display:"flex",flexDirection:"column",gap:"8px",boxShadow:"0 -2px 10px rgba(0,0,0,0.06)"}}>
       {editPt&&(
         <div style={{display:"flex",flexDirection:"column",gap:"7px",background:"#fff",border:"1.5px solid #f59e0b",borderRadius:"10px",padding:"12px"}}>
           <div style={{fontSize:"11px",fontWeight:700,color:"#b45309",marginBottom:"2px"}}>환자 정보 수정</div>
@@ -1596,6 +1596,111 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
 }
 
 
+// BBS 스톱워치 컴포넌트
+function BbsTimer({milestones}){
+  const [elapsed, setElapsed]=React.useState(0);       // 현재 경과 초
+  const [running, setRunning]=React.useState(false);
+  const [reached, setReached]=React.useState([]);       // 통과한 milestone 인덱스
+  const intervalRef=React.useRef(null);
+  const startRef=React.useRef(0);
+  const baseRef=React.useRef(0);                        // 일시정지 누적 시간
+
+  const fmt=(s)=>{
+    const m=Math.floor(s/60);
+    const sec=Math.floor(s%60);
+    return m>0?`${m}분`:`${sec}초`;
+  };
+  const fmtElapsed=(s)=>{
+    const m=Math.floor(s/60);
+    const sec=(s%60).toFixed(1);
+    return m>0?`${m}분 ${sec}초`:`${sec}초`;
+  };
+
+  const start=()=>{
+    startRef.current=Date.now();
+    intervalRef.current=setInterval(()=>{
+      const now=(Date.now()-startRef.current)/1000+baseRef.current;
+      setElapsed(now);
+      // milestone 통과 체크
+      milestones.forEach((ms,i)=>{
+        if(now>=ms){
+          setReached(prev=>prev.includes(i)?prev:[...prev,i]);
+          // 진동 (처음 통과 시만)
+          try{ if(!reached.includes(i)) navigator.vibrate&&navigator.vibrate(200); }catch{}
+        }
+      });
+    },50);
+    setRunning(true);
+  };
+
+  const stop=()=>{
+    clearInterval(intervalRef.current);
+    baseRef.current=(Date.now()-startRef.current)/1000+baseRef.current;
+    setRunning(false);
+  };
+
+  const reset=()=>{
+    clearInterval(intervalRef.current);
+    setElapsed(0);
+    setRunning(false);
+    setReached([]);
+    baseRef.current=0;
+  };
+
+  React.useEffect(()=>()=>clearInterval(intervalRef.current),[]);
+
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:"5px",flexShrink:0}}>
+      {/* milestone 뱃지들 */}
+      <div style={{display:"flex",gap:"3px",flexWrap:"wrap",justifyContent:"flex-end"}}>
+        {milestones.map((ms,i)=>{
+          const done=reached.includes(i);
+          return(
+            <span key={i} style={{fontSize:"10px",fontWeight:700,padding:"2px 6px",borderRadius:"20px",
+              background:done?"#16a34a":"#e2e8f0",
+              color:done?"#fff":"#94a3b8",
+              border:`1px solid ${done?"#16a34a":"#cbd5e1"}`,
+              transition:"all 0.3s",whiteSpace:"nowrap"}}>
+              {fmt(ms)}
+            </span>
+          );
+        })}
+      </div>
+      {/* 경과 시간 */}
+      {(running||elapsed>0)&&(
+        <span style={{fontSize:"12px",fontWeight:800,color:running?"#2563eb":"#475569",
+          fontVariantNumeric:"tabular-nums",minWidth:"28px",textAlign:"right"}}>
+          {fmtElapsed(elapsed)}
+        </span>
+      )}
+      {/* 버튼 */}
+      {!running?(
+        <button onClick={e=>{e.stopPropagation();elapsed>0?start():start();}}
+          style={{flexShrink:0,width:"28px",height:"28px",borderRadius:"50%",border:"1.5px solid #8b5cf6",
+            background:"#f3eeff",color:"#6d28d9",fontSize:"13px",cursor:"pointer",
+            display:"flex",alignItems:"center",justifyContent:"center"}}>
+          ▶
+        </button>
+      ):(
+        <button onClick={e=>{e.stopPropagation();stop();}}
+          style={{flexShrink:0,width:"28px",height:"28px",borderRadius:"50%",border:"1.5px solid #ef4444",
+            background:"#fef2f2",color:"#ef4444",fontSize:"11px",cursor:"pointer",
+            display:"flex",alignItems:"center",justifyContent:"center"}}>
+          ■
+        </button>
+      )}
+      {elapsed>0&&!running&&(
+        <button onClick={e=>{e.stopPropagation();reset();}}
+          style={{flexShrink:0,width:"28px",height:"28px",borderRadius:"50%",border:"1.5px solid #e2e8f0",
+            background:"#f8fafc",color:"#94a3b8",fontSize:"13px",cursor:"pointer",
+            display:"flex",alignItems:"center",justifyContent:"center"}}>
+          ↺
+        </button>
+      )}
+    </div>
+  );
+}
+
 function MmtSelect({value, onChange}){
   const [open,setOpen]=React.useState(false);
   const btnRef=React.useRef(null);
@@ -2242,12 +2347,16 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
           const total=scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
           return(
             <div key={field.id}>
-
               {BBS_ITEMS.map((item,ri)=>{
                 const selected=scores[ri];
+                const hasTimer=!!(item.timers&&item.timers.length>0);
                 return(
                   <div key={ri} style={{marginBottom:"20px"}}>
-                    <div style={{fontSize:"15px",fontWeight:800,color:"#3b1d8a",marginBottom:"8px",padding:"8px 12px",background:"#ede9ff",borderRadius:"8px",borderLeft:"4px solid #8b5cf6",lineHeight:1.4}}>{item.label}</div>
+                    {/* 항목 헤더 */}
+                    <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px",padding:"8px 12px",background:"#ede9ff",borderRadius:"8px",borderLeft:"4px solid #8b5cf6"}}>
+                      <span style={{fontSize:"14px",fontWeight:800,color:"#3b1d8a",flex:1,lineHeight:1.4}}>{item.label}</span>
+                      {hasTimer&&<BbsTimer milestones={item.timers}/>}
+                    </div>
                     {item.opts.map(([score,desc])=>{
                       const on=selected===score;
                       return(
