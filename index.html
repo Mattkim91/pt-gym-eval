@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.32</title>
+  <title>환자 평가 관리 v6.33</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.32";
+const APP_VERSION = "v6.33";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1596,275 +1596,6 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
 }
 
 // BBS 플로팅 타이머 컴포넌트
-function RomGoniometerPopup({onClose, onInsert}){
-  const [relAngle, setRelAngle] = React.useState(0);
-  const [running, setRunning] = React.useState(false);
-  const [frozen, setFrozen] = React.useState(null);
-  const [status, setStatus] = React.useState("시작 버튼을 누르세요");
-  const baseMatRef = React.useRef(null); // 시작 시점 회전행렬
-  const handlerRef = React.useRef(null);
-  const canvasRef = React.useRef(null);
-  const relAngleRef = React.useRef(0);
-
-  const round5=(v)=>Math.round(v/5)*5;
-
-  // DeviceOrientation → 3x3 회전행렬 변환
-  // W3C 표준 공식 (https://www.w3.org/TR/orientation-event/)
-  const toMatrix=(alpha,beta,gamma)=>{
-    const a=alpha*Math.PI/180;
-    const b=beta*Math.PI/180;
-    const g=gamma*Math.PI/180;
-    const ca=Math.cos(a), sa=Math.sin(a);
-    const cb=Math.cos(b), sb=Math.sin(b);
-    const cg=Math.cos(g), sg=Math.sin(g);
-    // R = Rz(alpha) * Rx(beta) * Ry(gamma)
-    return [
-      ca*cg - sa*sb*sg,  -cb*sa,  ca*sg + cg*sa*sb,
-      cg*sa + ca*sb*sg,   cb*ca,  sa*sg - ca*cg*sb,
-      -cb*sg,             sb,     cb*cg
-    ];
-  };
-
-  // 두 회전행렬 사이의 각도 (내적으로 계산)
-  // 기준 행렬의 "위 방향 벡터"와 현재 "위 방향 벡터" 사이 각도
-  const angleBetween=(mBase, mCur)=>{
-    // 각 행렬의 "폰 위 방향" = 세 번째 열 (z축)
-    // mBase[2], mBase[5], mBase[8] = 기준 z벡터
-    // mCur[2],  mCur[5],  mCur[8]  = 현재 z벡터
-    // 내적으로 두 벡터 사이 각도
-    const dot = mBase[2]*mCur[2] + mBase[5]*mCur[5] + mBase[8]*mCur[8];
-    const clamped = Math.min(Math.max(dot,-1),1);
-    return Math.acos(clamped)*180/Math.PI;
-  };
-
-  // 부호 결정: 기준 행렬 기준으로 시계/반시계
-  const signedAngle=(mBase, mCur)=>{
-    // 기준 x벡터 방향으로의 회전 성분으로 부호 결정
-    // cross product의 z 성분
-    const bz0=mBase[2], bz1=mBase[5], bz2=mBase[8];
-    const cz0=mCur[2],  cz1=mCur[5],  cz2=mCur[8];
-    // 기준 "위" 벡터 (y축 방향)
-    const by0=mBase[1], by1=mBase[4], by2=mBase[7];
-    // cross = bz × cz
-    const cx = bz1*cz2 - bz2*cz1;
-    const cy = bz2*cz0 - bz0*cz2;
-    const cz = bz0*cz1 - bz1*cz0;
-    // 부호 = cross · by
-    const sign = cx*by0 + cy*by1 + cz*by2;
-    const abs = angleBetween(mBase, mCur);
-    return sign>=0 ? abs : -abs;
-  };
-
-  const drawGonio=(cvs, rel, isFrozen)=>{
-    if(!cvs) return;
-    const ctx=cvs.getContext("2d");
-    const W=cvs.width, H=cvs.height;
-    const cx=W/2, cy=H/2-16;
-    const R=Math.min(W,H)/2-14;
-
-    ctx.clearRect(0,0,W,H);
-
-    ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2);
-    ctx.fillStyle="#f8fafc"; ctx.fill();
-    ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=1.5; ctx.stroke();
-
-    ctx.beginPath(); ctx.arc(cx,cy,R*0.22,0,Math.PI*2);
-    ctx.fillStyle="#fff"; ctx.fill();
-
-    for(let deg=-180; deg<180; deg+=15){
-      const rad=(deg-90)*Math.PI/180;
-      const isMajor=deg%30===0;
-      const tickLen=isMajor?11:5;
-      const x1=cx+R*0.93*Math.cos(rad), y1=cy+R*0.93*Math.sin(rad);
-      const x2=cx+(R*0.93-tickLen)*Math.cos(rad), y2=cy+(R*0.93-tickLen)*Math.sin(rad);
-      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
-      ctx.strokeStyle=isMajor?"#64748b":"#cbd5e1";
-      ctx.lineWidth=isMajor?1.5:0.8; ctx.stroke();
-      if(isMajor){
-        const tx=cx+R*0.73*Math.cos(rad), ty=cy+R*0.73*Math.sin(rad);
-        ctx.fillStyle="#94a3b8";
-        ctx.font="9px -apple-system,sans-serif";
-        ctx.textAlign="center"; ctx.textBaseline="middle";
-        ctx.fillText(deg+"°",tx,ty);
-      }
-    }
-
-    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx,cy-R*0.88);
-    ctx.strokeStyle="rgba(148,163,184,0.4)";
-    ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
-
-    if(Math.abs(rel)>0.5){
-      const startRad=-Math.PI/2;
-      const endRad=(rel-90)*Math.PI/180;
-      ctx.beginPath(); ctx.moveTo(cx,cy);
-      ctx.arc(cx,cy,R*0.86,startRad,endRad,rel<0);
-      ctx.closePath();
-      ctx.fillStyle=isFrozen?"rgba(37,99,235,0.1)":"rgba(239,68,68,0.08)"; ctx.fill();
-    }
-
-    const baseRad=-Math.PI/2;
-    ctx.beginPath(); ctx.moveTo(cx,cy);
-    ctx.lineTo(cx+R*0.83*Math.cos(baseRad), cy+R*0.83*Math.sin(baseRad));
-    ctx.strokeStyle="#ef4444"; ctx.lineWidth=3; ctx.lineCap="round"; ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx+R*0.83*Math.cos(baseRad), cy+R*0.83*Math.sin(baseRad),4,0,Math.PI*2);
-    ctx.fillStyle="#ef4444"; ctx.fill();
-
-    const curRad=(rel-90)*Math.PI/180;
-    ctx.beginPath(); ctx.moveTo(cx,cy);
-    ctx.lineTo(cx+R*0.83*Math.cos(curRad), cy+R*0.83*Math.sin(curRad));
-    ctx.strokeStyle=isFrozen?"#2563eb":"#3b82f6";
-    ctx.lineWidth=isFrozen?3.5:3; ctx.lineCap="round"; ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx+R*0.83*Math.cos(curRad), cy+R*0.83*Math.sin(curRad),4,0,Math.PI*2);
-    ctx.fillStyle=isFrozen?"#2563eb":"#3b82f6"; ctx.fill();
-
-    ctx.beginPath(); ctx.arc(cx,cy,6,0,Math.PI*2);
-    ctx.fillStyle="#334155"; ctx.fill();
-
-    const rounded=round5(rel);
-    const label=(rounded>0?"+":"")+rounded+"°";
-    ctx.fillStyle=isFrozen?"#2563eb":(rel<0?"#dc2626":"#1e293b");
-    ctx.font="bold 24px -apple-system,sans-serif";
-    ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText(label, cx, cy+R+18);
-  };
-
-  React.useEffect(()=>{
-    drawGonio(canvasRef.current, relAngle, frozen!=null);
-  },[relAngle, frozen]);
-
-  const startMeasure=(alpha,beta,gamma)=>{
-    baseMatRef.current=toMatrix(alpha,beta,gamma);
-    const h=(e)=>{
-      const a=e.alpha!=null?e.alpha:0;
-      const b=e.beta!=null?e.beta:0;
-      const g=e.gamma!=null?e.gamma:0;
-      const curMat=toMatrix(a,b,g);
-      const angle=signedAngle(baseMatRef.current, curMat);
-      relAngleRef.current=angle;
-      setRelAngle(angle);
-    };
-    handlerRef.current=h;
-    window.addEventListener("deviceorientation",h,true);
-    setFrozen(null); setRelAngle(0); relAngleRef.current=0;
-    setRunning(true);
-    setStatus("기울이면 바늘이 따라 움직입니다");
-  };
-
-  const doStart=()=>{
-    const tmp=(e)=>{
-      const a=e.alpha!=null?e.alpha:0;
-      const b=e.beta!=null?e.beta:0;
-      const g=e.gamma!=null?e.gamma:0;
-      window.removeEventListener("deviceorientation",tmp,true);
-      startMeasure(a,b,g);
-    };
-    window.addEventListener("deviceorientation",tmp,true);
-    setStatus("센서 연결 중...");
-  };
-
-  const requestAndStart=()=>{
-    if(typeof DeviceOrientationEvent!=="undefined"&&
-       typeof DeviceOrientationEvent.requestPermission==="function"){
-      DeviceOrientationEvent.requestPermission()
-        .then((p)=>{ if(p==="granted") doStart(); else setStatus("권한 거부됨"); })
-        .catch(()=>setStatus("권한 오류"));
-    } else {
-      doStart();
-    }
-  };
-
-  const stop=()=>{
-    setRunning(false);
-    if(handlerRef.current){
-      window.removeEventListener("deviceorientation",handlerRef.current,true);
-      handlerRef.current=null;
-    }
-    setFrozen(relAngleRef.current);
-    setStatus("정지됐습니다. 입력하시겠습니까?");
-  };
-
-  const reset=()=>{
-    setRunning(false); setRelAngle(0); setFrozen(null);
-    relAngleRef.current=0; baseMatRef.current=null;
-    if(handlerRef.current){
-      window.removeEventListener("deviceorientation",handlerRef.current,true);
-      handlerRef.current=null;
-    }
-    setStatus("시작 버튼을 누르세요");
-  };
-
-  const insert=()=>{
-    const val=frozen!=null?frozen:relAngle;
-    onInsert(String(round5(val)));
-    reset(); onClose();
-  };
-
-  React.useEffect(()=>{
-    drawGonio(canvasRef.current,0,false);
-    return ()=>{
-      if(handlerRef.current)
-        window.removeEventListener("deviceorientation",handlerRef.current,true);
-    };
-  },[]);
-
-  const display=frozen!=null?frozen:relAngle;
-  const rounded=round5(display);
-
-  return ReactDOM.createPortal(
-    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:9000,
-      display:"flex",alignItems:"center",justifyContent:"center",
-      background:"rgba(0,0,0,0.5)"}}>
-      <div onClick={e=>e.stopPropagation()}
-        style={{width:"300px",background:"#fff",borderRadius:"20px",
-          boxShadow:"0 8px 32px rgba(0,0,0,0.3)",overflow:"hidden"}}>
-        <div style={{background:"#16a34a",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <span style={{color:"#fff",fontWeight:800,fontSize:"15px"}}>📐 각도기</span>
-          <button onClick={onClose}
-            style={{background:"rgba(255,255,255,0.2)",border:"none",borderRadius:"8px",
-              padding:"4px 10px",color:"#fff",fontSize:"12px",fontWeight:600,cursor:"pointer"}}>
-            닫기
-          </button>
-        </div>
-        <div style={{padding:"12px 16px 0px"}}>
-          <canvas ref={canvasRef} width={268} height={296} style={{width:"100%",display:"block"}}/>
-        </div>
-        <div style={{textAlign:"center",fontSize:"12px",color:"#64748b",
-          padding:"4px 16px 8px",minHeight:"18px"}}>{status}</div>
-        <div style={{display:"flex",gap:"10px",padding:"0 16px 18px"}}>
-          <button onClick={reset}
-            style={{width:"58px",height:"60px",borderRadius:"14px",border:"1.5px solid #e2e8f0",
-              background:"#f8fafc",color:"#94a3b8",fontSize:"20px",cursor:"pointer",flexShrink:0}}>
-            ↺
-          </button>
-          {!running&&frozen==null&&(
-            <button onClick={requestAndStart}
-              style={{flex:1,height:"60px",borderRadius:"14px",border:"2px solid #16a34a",
-                background:"#f0fdf4",color:"#16a34a",fontSize:"22px",fontWeight:700,cursor:"pointer"}}>
-              ▶ 시작
-            </button>
-          )}
-          {running&&(
-            <button onClick={stop}
-              style={{flex:1,height:"60px",borderRadius:"14px",border:"2px solid #ef4444",
-                background:"#fef2f2",color:"#ef4444",fontSize:"22px",fontWeight:700,cursor:"pointer"}}>
-              ■ 정지
-            </button>
-          )}
-          {frozen!=null&&(
-            <button onClick={insert}
-              style={{flex:1,height:"60px",borderRadius:"14px",border:"2px solid #16a34a",
-                background:"#16a34a",color:"#fff",fontSize:"16px",fontWeight:700,cursor:"pointer"}}>
-              ✓ 입력 ({(rounded>0?"+":"")+rounded}°)
-            </button>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
 
 
 
@@ -2290,7 +2021,6 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
   const [fd,setFd]=useState(()=>initialData?JSON.parse(JSON.stringify(initialData)):buildInit());
   const [isDirty,setIsDirty]=useState(false);
   const [showBbsTimer,setShowBbsTimer]=useState(false);
-  const [gonioTarget,setGonioTarget]=useState(null); // {si,ri,side,setRom}
   const markDirty=()=>{ setIsDirty(true); if(dirtyRef) dirtyRef.current=true; };
   const setF=(id,val)=>{markDirty();setFd(prev=>({...prev,[id]:val}));};
   const setCell=(tid,ri,ck,val)=>{markDirty();setFd(prev=>{const arr=[...(prev[tid]||[])];arr[ri]={...arr[ri],[ck]:val};return{...prev,[tid]:arr};});};
@@ -2483,7 +2213,6 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                                 <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"2px"}}>
                                   <input style={S.cellInput} inputMode="decimal" value={romData[key]?.right||""} onChange={e=>{markDirty();setRom(si,ri,"right",e.target.value.replace(/[^0-9().+\-]/g,""));}} placeholder="°"/>
                                   <button onTouchStart={e=>e.preventDefault()} onMouseDown={e=>{e.preventDefault();appendHyphen(si,ri,"right");}} style={{flexShrink:0,width:"18px",height:"28px",border:"1.5px solid #cbd5e1",borderRadius:"5px",background:"#f8fafc",color:"#475569",fontSize:"12px",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>-</button>
-                                  <button onClick={()=>setGonioTarget({si,ri,side:"right",setRom})} style={{flexShrink:0,width:"18px",height:"28px",border:"1.5px solid #bbf7d0",borderRadius:"5px",background:"#f0fdf4",color:"#16a34a",fontSize:"10px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>📐</button>
                                 </div>
                               </td>
                               <td style={{...S.td,fontSize:"11px",color:"#475569",textAlign:"center",wordBreak:"break-word",lineHeight:1.4}}>{row}</td>
@@ -2491,7 +2220,6 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                                 <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"2px"}}>
                                   <input style={S.cellInput} inputMode="decimal" value={romData[key]?.left||""} onChange={e=>{markDirty();setRom(si,ri,"left",e.target.value.replace(/[^0-9().+\-]/g,""));}} placeholder="°"/>
                                   <button onTouchStart={e=>e.preventDefault()} onMouseDown={e=>{e.preventDefault();appendHyphen(si,ri,"left");}} style={{flexShrink:0,width:"18px",height:"28px",border:"1.5px solid #cbd5e1",borderRadius:"5px",background:"#f8fafc",color:"#475569",fontSize:"12px",fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>-</button>
-                                  <button onClick={()=>setGonioTarget({si,ri,side:"left",setRom})} style={{flexShrink:0,width:"18px",height:"28px",border:"1.5px solid #bbf7d0",borderRadius:"5px",background:"#f0fdf4",color:"#16a34a",fontSize:"10px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>📐</button>
                                 </div>
                               </td>
                             </tr>
@@ -2836,15 +2564,6 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
         );
       })}
     </div>
-    {/* ROM 각도기 팝업 */}
-    {gonioTarget&&<RomGoniometerPopup
-      onClose={()=>setGonioTarget(null)}
-      onInsert={val=>{
-        markDirty();
-        gonioTarget.setRom(gonioTarget.si,gonioTarget.ri,gonioTarget.side,val);
-        setGonioTarget(null);
-      }}
-    />}
     {/* BBS 타이머 플로팅 버튼 */}
     {template?.fields?.some(f=>f.type==="bbs_full")&&(
       <>
