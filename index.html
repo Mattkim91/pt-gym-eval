@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.31</title>
+  <title>환자 평가 관리 v6.32</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.31";
+const APP_VERSION = "v6.32";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1601,34 +1601,76 @@ function RomGoniometerPopup({onClose, onInsert}){
   const [running, setRunning] = React.useState(false);
   const [frozen, setFrozen] = React.useState(null);
   const [status, setStatus] = React.useState("시작 버튼을 누르세요");
-  const baseRef = React.useRef(null);
+  const baseMatRef = React.useRef(null); // 시작 시점 회전행렬
   const handlerRef = React.useRef(null);
   const canvasRef = React.useRef(null);
   const relAngleRef = React.useRef(0);
 
   const round5=(v)=>Math.round(v/5)*5;
 
+  // DeviceOrientation → 3x3 회전행렬 변환
+  // W3C 표준 공식 (https://www.w3.org/TR/orientation-event/)
+  const toMatrix=(alpha,beta,gamma)=>{
+    const a=alpha*Math.PI/180;
+    const b=beta*Math.PI/180;
+    const g=gamma*Math.PI/180;
+    const ca=Math.cos(a), sa=Math.sin(a);
+    const cb=Math.cos(b), sb=Math.sin(b);
+    const cg=Math.cos(g), sg=Math.sin(g);
+    // R = Rz(alpha) * Rx(beta) * Ry(gamma)
+    return [
+      ca*cg - sa*sb*sg,  -cb*sa,  ca*sg + cg*sa*sb,
+      cg*sa + ca*sb*sg,   cb*ca,  sa*sg - ca*cg*sb,
+      -cb*sg,             sb,     cb*cg
+    ];
+  };
+
+  // 두 회전행렬 사이의 각도 (내적으로 계산)
+  // 기준 행렬의 "위 방향 벡터"와 현재 "위 방향 벡터" 사이 각도
+  const angleBetween=(mBase, mCur)=>{
+    // 각 행렬의 "폰 위 방향" = 세 번째 열 (z축)
+    // mBase[2], mBase[5], mBase[8] = 기준 z벡터
+    // mCur[2],  mCur[5],  mCur[8]  = 현재 z벡터
+    // 내적으로 두 벡터 사이 각도
+    const dot = mBase[2]*mCur[2] + mBase[5]*mCur[5] + mBase[8]*mCur[8];
+    const clamped = Math.min(Math.max(dot,-1),1);
+    return Math.acos(clamped)*180/Math.PI;
+  };
+
+  // 부호 결정: 기준 행렬 기준으로 시계/반시계
+  const signedAngle=(mBase, mCur)=>{
+    // 기준 x벡터 방향으로의 회전 성분으로 부호 결정
+    // cross product의 z 성분
+    const bz0=mBase[2], bz1=mBase[5], bz2=mBase[8];
+    const cz0=mCur[2],  cz1=mCur[5],  cz2=mCur[8];
+    // 기준 "위" 벡터 (y축 방향)
+    const by0=mBase[1], by1=mBase[4], by2=mBase[7];
+    // cross = bz × cz
+    const cx = bz1*cz2 - bz2*cz1;
+    const cy = bz2*cz0 - bz0*cz2;
+    const cz = bz0*cz1 - bz1*cz0;
+    // 부호 = cross · by
+    const sign = cx*by0 + cy*by1 + cz*by2;
+    const abs = angleBetween(mBase, mCur);
+    return sign>=0 ? abs : -abs;
+  };
+
   const drawGonio=(cvs, rel, isFrozen)=>{
     if(!cvs) return;
     const ctx=cvs.getContext("2d");
     const W=cvs.width, H=cvs.height;
-    const cx=W/2, cy=H/2-16; // 원 중심 위로 올려서 숫자 공간 확보
+    const cx=W/2, cy=H/2-16;
     const R=Math.min(W,H)/2-14;
 
     ctx.clearRect(0,0,W,H);
 
-    // 배경 원
-    ctx.beginPath();
-    ctx.arc(cx,cy,R,0,Math.PI*2);
+    ctx.beginPath(); ctx.arc(cx,cy,R,0,Math.PI*2);
     ctx.fillStyle="#f8fafc"; ctx.fill();
     ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=1.5; ctx.stroke();
 
-    // 내부 원
-    ctx.beginPath();
-    ctx.arc(cx,cy,R*0.22,0,Math.PI*2);
+    ctx.beginPath(); ctx.arc(cx,cy,R*0.22,0,Math.PI*2);
     ctx.fillStyle="#fff"; ctx.fill();
 
-    // 눈금
     for(let deg=-180; deg<180; deg+=15){
       const rad=(deg-90)*Math.PI/180;
       const isMajor=deg%30===0;
@@ -1647,25 +1689,19 @@ function RomGoniometerPopup({onClose, onInsert}){
       }
     }
 
-    // 0° 점선
-    ctx.beginPath();
-    ctx.moveTo(cx,cy); ctx.lineTo(cx,cy-R*0.88);
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx,cy-R*0.88);
     ctx.strokeStyle="rgba(148,163,184,0.4)";
-    ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
 
-    // 색칠 범위
     if(Math.abs(rel)>0.5){
       const startRad=-Math.PI/2;
       const endRad=(rel-90)*Math.PI/180;
       ctx.beginPath(); ctx.moveTo(cx,cy);
       ctx.arc(cx,cy,R*0.86,startRad,endRad,rel<0);
       ctx.closePath();
-      ctx.fillStyle=isFrozen?"rgba(37,99,235,0.1)":"rgba(239,68,68,0.08)";
-      ctx.fill();
+      ctx.fillStyle=isFrozen?"rgba(37,99,235,0.1)":"rgba(239,68,68,0.08)"; ctx.fill();
     }
 
-    // 빨간 바늘 (0° = 위쪽 고정)
     const baseRad=-Math.PI/2;
     ctx.beginPath(); ctx.moveTo(cx,cy);
     ctx.lineTo(cx+R*0.83*Math.cos(baseRad), cy+R*0.83*Math.sin(baseRad));
@@ -1674,7 +1710,6 @@ function RomGoniometerPopup({onClose, onInsert}){
     ctx.arc(cx+R*0.83*Math.cos(baseRad), cy+R*0.83*Math.sin(baseRad),4,0,Math.PI*2);
     ctx.fillStyle="#ef4444"; ctx.fill();
 
-    // 파란 바늘 (현재)
     const curRad=(rel-90)*Math.PI/180;
     ctx.beginPath(); ctx.moveTo(cx,cy);
     ctx.lineTo(cx+R*0.83*Math.cos(curRad), cy+R*0.83*Math.sin(curRad));
@@ -1684,11 +1719,9 @@ function RomGoniometerPopup({onClose, onInsert}){
     ctx.arc(cx+R*0.83*Math.cos(curRad), cy+R*0.83*Math.sin(curRad),4,0,Math.PI*2);
     ctx.fillStyle=isFrozen?"#2563eb":"#3b82f6"; ctx.fill();
 
-    // 중심 원
     ctx.beginPath(); ctx.arc(cx,cy,6,0,Math.PI*2);
     ctx.fillStyle="#334155"; ctx.fill();
 
-    // 각도 숫자 - 원 아래 별도 공간에 표시
     const rounded=round5(rel);
     const label=(rounded>0?"+":"")+rounded+"°";
     ctx.fillStyle=isFrozen?"#2563eb":(rel<0?"#dc2626":"#1e293b");
@@ -1701,27 +1734,16 @@ function RomGoniometerPopup({onClose, onInsert}){
     drawGonio(canvasRef.current, relAngle, frozen!=null);
   },[relAngle, frozen]);
 
-  const startMeasure=(initBeta, initGamma)=>{
-    // 폰 세로: beta 사용 (세로 기준 좌우 회전 = beta 변화)
-    // 폰 가로: gamma 사용
-    // |gamma| < 45이면 세로로 들고 있는 것 → beta 사용
-    // |gamma| >= 45이면 가로로 들고 있는 것 → gamma 사용
-    const useGamma=Math.abs(initGamma)>=45;
-    baseRef.current={beta:initBeta, gamma:initGamma, useGamma};
+  const startMeasure=(alpha,beta,gamma)=>{
+    baseMatRef.current=toMatrix(alpha,beta,gamma);
     const h=(e)=>{
-      const beta=e.beta!=null?e.beta:0;
-      const gamma=e.gamma!=null?e.gamma:0;
-      let delta;
-      if(baseRef.current.useGamma){
-        delta=gamma-baseRef.current.gamma;
-      } else {
-        delta=beta-baseRef.current.beta;
-      }
-      // -180~+180 정규화
-      if(delta>180) delta-=360;
-      if(delta<-180) delta+=360;
-      relAngleRef.current=delta;
-      setRelAngle(delta);
+      const a=e.alpha!=null?e.alpha:0;
+      const b=e.beta!=null?e.beta:0;
+      const g=e.gamma!=null?e.gamma:0;
+      const curMat=toMatrix(a,b,g);
+      const angle=signedAngle(baseMatRef.current, curMat);
+      relAngleRef.current=angle;
+      setRelAngle(angle);
     };
     handlerRef.current=h;
     window.addEventListener("deviceorientation",h,true);
@@ -1732,10 +1754,11 @@ function RomGoniometerPopup({onClose, onInsert}){
 
   const doStart=()=>{
     const tmp=(e)=>{
-      const beta=e.beta!=null?e.beta:0;
-      const gamma=e.gamma!=null?e.gamma:0;
+      const a=e.alpha!=null?e.alpha:0;
+      const b=e.beta!=null?e.beta:0;
+      const g=e.gamma!=null?e.gamma:0;
       window.removeEventListener("deviceorientation",tmp,true);
-      startMeasure(beta,gamma);
+      startMeasure(a,b,g);
     };
     window.addEventListener("deviceorientation",tmp,true);
     setStatus("센서 연결 중...");
@@ -1764,7 +1787,7 @@ function RomGoniometerPopup({onClose, onInsert}){
 
   const reset=()=>{
     setRunning(false); setRelAngle(0); setFrozen(null);
-    relAngleRef.current=0; baseRef.current=null;
+    relAngleRef.current=0; baseMatRef.current=null;
     if(handlerRef.current){
       window.removeEventListener("deviceorientation",handlerRef.current,true);
       handlerRef.current=null;
@@ -1842,6 +1865,7 @@ function RomGoniometerPopup({onClose, onInsert}){
     document.body
   );
 }
+
 
 
 
