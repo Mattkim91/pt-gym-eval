@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.29</title>
+  <title>환자 평가 관리 v6.30</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.29";
+const APP_VERSION = "v6.30";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1597,156 +1597,166 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
 
 // BBS 플로팅 타이머 컴포넌트
 function RomGoniometerPopup({onClose, onInsert}){
-  const [angle, setAngle] = React.useState(0);
+  const [relAngle, setRelAngle] = React.useState(0); // 상대 각도 (-180~+180)
   const [running, setRunning] = React.useState(false);
   const [frozen, setFrozen] = React.useState(null);
   const [status, setStatus] = React.useState("시작 버튼을 누르세요");
-  const baseAngleRef = React.useRef(null); // 시작 시점 절대각도
+  const baseGammaRef = React.useRef(null);
   const handlerRef = React.useRef(null);
   const canvasRef = React.useRef(null);
-  const angleRef = React.useRef(0);
+  const relAngleRef = React.useRef(0);
 
   const round5=(v)=>Math.round(v/5)*5;
 
-  // 가속도계 중력벡터로 절대각도 계산 (가장 검증된 방식)
-  // 폰을 세로로 들었을 때: atan2(x, z) → 앞뒤 기울기
-  // 폰을 가로로 들었을 때: atan2(y, z) → 좌우 기울기
-  // 두 축을 합성해서 실제 기울기 각도 계산
-  const calcAngle=(gx, gy, gz)=>{
-    // 중력벡터 크기로 정규화
-    const norm=Math.sqrt(gx*gx+gy*gy+gz*gz);
-    if(norm===0) return 0;
-    const nx=gx/norm, ny=gy/norm, nz=gz/norm;
-    // z축(화면 수직)과의 각도 = 기울기 각도
-    const rad=Math.acos(Math.min(Math.max(nz,-1),1));
-    return rad*(180/Math.PI);
-  };
-
-  const drawGonio=(cvs, currentAngle, isFrozen)=>{
+  const drawGonio=(cvs, rel, isFrozen)=>{
     if(!cvs) return;
     const ctx=cvs.getContext("2d");
     const W=cvs.width, H=cvs.height;
-    const cx=W/2, cy=H-12;
-    const R=H-20;
+    const cx=W/2, cy=H/2;
+    const R=Math.min(W,H)/2-10;
+
     ctx.clearRect(0,0,W,H);
 
-    // 배경 부채꼴
-    ctx.beginPath(); ctx.moveTo(cx,cy);
-    ctx.arc(cx,cy,R,Math.PI,0,false);
-    ctx.closePath();
-    ctx.fillStyle="#f8fafc"; ctx.fill();
-    ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=1.5; ctx.stroke();
+    // 배경 원
+    ctx.beginPath();
+    ctx.arc(cx,cy,R,0,Math.PI*2);
+    ctx.fillStyle="#f8fafc";
+    ctx.fill();
+    ctx.strokeStyle="#e2e8f0";
+    ctx.lineWidth=1.5;
+    ctx.stroke();
 
     // 내부 원
-    ctx.beginPath(); ctx.arc(cx,cy,R*0.35,0,Math.PI*2);
-    ctx.fillStyle="#fff"; ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx,cy,R*0.25,0,Math.PI*2);
+    ctx.fillStyle="#fff";
+    ctx.fill();
 
-    // 눈금
-    [0,30,45,60,90,120,135,150,180].forEach(deg=>{
-      const rad=Math.PI-(deg*Math.PI/180);
+    // 눈금 (-180~+180, 30도 간격)
+    for(let deg=-180; deg<=180; deg+=15){
+      const rad=(deg-90)*Math.PI/180; // -90 offset: 위쪽이 0°
       const isMajor=deg%30===0;
-      const tickLen=isMajor?12:7;
-      const x1=cx+R*0.92*Math.cos(rad), y1=cy+R*0.92*Math.sin(rad);
-      const x2=cx+(R*0.92-tickLen)*Math.cos(rad), y2=cy+(R*0.92-tickLen)*Math.sin(rad);
+      const tickLen=isMajor?12:6;
+      const x1=cx+R*0.92*Math.cos(rad);
+      const y1=cy+R*0.92*Math.sin(rad);
+      const x2=cx+(R*0.92-tickLen)*Math.cos(rad);
+      const y2=cy+(R*0.92-tickLen)*Math.sin(rad);
       ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
       ctx.strokeStyle=isMajor?"#64748b":"#cbd5e1";
-      ctx.lineWidth=isMajor?1.5:1; ctx.stroke();
-      if(isMajor){
-        const tx=cx+R*0.75*Math.cos(rad), ty=cy+R*0.75*Math.sin(rad);
+      ctx.lineWidth=isMajor?1.5:0.8;
+      ctx.stroke();
+      if(isMajor&&deg>-180){
+        const tx=cx+R*0.74*Math.cos(rad);
+        const ty=cy+R*0.74*Math.sin(rad);
         ctx.fillStyle="#64748b";
-        ctx.font="bold 11px -apple-system,sans-serif";
-        ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.font="bold 9px -apple-system,sans-serif";
+        ctx.textAlign="center";
+        ctx.textBaseline="middle";
         ctx.fillText(deg+"°",tx,ty);
       }
-    });
+    }
 
-    // 색칠 범위
-    const disp=Math.min(Math.max(currentAngle,0),180);
-    if(disp>0){
-      ctx.beginPath(); ctx.moveTo(cx,cy);
-      ctx.arc(cx,cy,R*0.88,Math.PI,Math.PI-(disp*Math.PI/180),false);
+    // 0° 기준선 (수직 위쪽 = 수직방향)
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.lineTo(cx, cy-R*0.85);
+    ctx.strokeStyle="rgba(148,163,184,0.5)";
+    ctx.lineWidth=1;
+    ctx.setLineDash([4,4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 색칠 범위 (0° ~ rel)
+    if(rel!==0){
+      const startRad=-90*Math.PI/180; // 위쪽
+      const endRad=(rel-90)*Math.PI/180;
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,R*0.85,startRad,endRad,rel<0);
       ctx.closePath();
-      ctx.fillStyle=isFrozen?"rgba(37,99,235,0.12)":"rgba(239,68,68,0.1)";
+      ctx.fillStyle=isFrozen?"rgba(37,99,235,0.12)":"rgba(239,68,68,0.08)";
       ctx.fill();
     }
 
-    // 빨간 바늘 (0° 고정)
-    const redRad=Math.PI;
-    ctx.beginPath(); ctx.moveTo(cx,cy);
-    ctx.lineTo(cx+R*0.85*Math.cos(redRad), cy+R*0.85*Math.sin(redRad));
-    ctx.strokeStyle="#ef4444"; ctx.lineWidth=2.5; ctx.lineCap="round"; ctx.stroke();
+    // 기준 바늘 (항상 수직 위 = 0°, 빨강)
+    const baseRad=-Math.PI/2;
     ctx.beginPath();
-    ctx.arc(cx+R*0.85*Math.cos(redRad),cy+R*0.85*Math.sin(redRad),4,0,Math.PI*2);
+    ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+R*0.82*Math.cos(baseRad), cy+R*0.82*Math.sin(baseRad));
+    ctx.strokeStyle="#ef4444";
+    ctx.lineWidth=2.5;
+    ctx.lineCap="round";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx+R*0.82*Math.cos(baseRad), cy+R*0.82*Math.sin(baseRad),4,0,Math.PI*2);
     ctx.fillStyle="#ef4444"; ctx.fill();
 
-    // 파란 바늘 (현재 각도)
-    const blueRad=Math.PI-(disp*Math.PI/180);
-    ctx.beginPath(); ctx.moveTo(cx,cy);
-    ctx.lineTo(cx+R*0.85*Math.cos(blueRad), cy+R*0.85*Math.sin(blueRad));
-    ctx.strokeStyle=isFrozen?"#2563eb":"#3b82f6";
-    ctx.lineWidth=isFrozen?3:2.5; ctx.lineCap="round"; ctx.stroke();
+    // 현재 바늘 (파랑)
+    const curRad=(rel-90)*Math.PI/180;
     ctx.beginPath();
-    ctx.arc(cx+R*0.85*Math.cos(blueRad),cy+R*0.85*Math.sin(blueRad),4,0,Math.PI*2);
+    ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+R*0.82*Math.cos(curRad), cy+R*0.82*Math.sin(curRad));
+    ctx.strokeStyle=isFrozen?"#2563eb":"#3b82f6";
+    ctx.lineWidth=isFrozen?3:2.5;
+    ctx.lineCap="round";
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx+R*0.82*Math.cos(curRad), cy+R*0.82*Math.sin(curRad),4,0,Math.PI*2);
     ctx.fillStyle=isFrozen?"#2563eb":"#3b82f6"; ctx.fill();
 
     // 중심
     ctx.beginPath(); ctx.arc(cx,cy,7,0,Math.PI*2);
     ctx.fillStyle="#334155"; ctx.fill();
 
-    // 각도 숫자
-    ctx.fillStyle=isFrozen?"#2563eb":"#1e293b";
-    ctx.font="bold 22px -apple-system,sans-serif";
-    ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText(round5(disp)+"°",cx,cy-R*0.45);
+    // 각도 숫자 (중앙)
+    const rounded=round5(rel);
+    ctx.fillStyle=isFrozen?"#2563eb":(rel<0?"#dc2626":"#1e293b");
+    ctx.font="bold 20px -apple-system,sans-serif";
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText((rounded>0?"+":"")+rounded+"°", cx, cy);
   };
 
   React.useEffect(()=>{
-    drawGonio(canvasRef.current, angle, frozen!=null);
-  },[angle, frozen]);
+    drawGonio(canvasRef.current, relAngle, frozen!=null);
+  },[relAngle, frozen]);
 
-  const startMeasure=(initGx,initGy,initGz)=>{
-    baseAngleRef.current=calcAngle(initGx,initGy,initGz);
+  const startMeasure=(initGamma)=>{
+    baseGammaRef.current=initGamma;
     const h=(e)=>{
-      const ag=e.accelerationIncludingGravity;
-      if(!ag) return;
-      const gx=ag.x!=null?ag.x:0;
-      const gy=ag.y!=null?ag.y:0;
-      const gz=ag.z!=null?ag.z:0;
-      const absAngle=calcAngle(gx,gy,gz);
-      // 시작 시점 기준 상대 변화량 (절대값)
-      const delta=Math.abs(absAngle-baseAngleRef.current);
-      const deg=Math.min(delta,180);
-      angleRef.current=deg;
-      setAngle(deg);
+      const gamma=e.gamma!=null?e.gamma:0;
+      // 시작 기준 상대값 (-90~+90 범위 내에서 안정적)
+      let delta=gamma-baseGammaRef.current;
+      // -180~+180 정규화
+      if(delta>180) delta-=360;
+      if(delta<-180) delta+=360;
+      relAngleRef.current=delta;
+      setRelAngle(delta);
     };
     handlerRef.current=h;
-    window.addEventListener("devicemotion",h,true);
+    window.addEventListener("deviceorientation",h,true);
     setFrozen(null);
-    setAngle(0);
-    angleRef.current=0;
+    setRelAngle(0);
+    relAngleRef.current=0;
     setRunning(true);
-    setStatus("기기를 기울여 각도를 측정하세요");
+    setStatus("기울이면 바늘이 따라 움직입니다");
   };
 
   const doStart=()=>{
     const tmp=(e)=>{
-      const ag=e.accelerationIncludingGravity;
-      if(!ag) return;
-      const gx=ag.x!=null?ag.x:0;
-      const gy=ag.y!=null?ag.y:0;
-      const gz=ag.z!=null?ag.z:0;
-      window.removeEventListener("devicemotion",tmp,true);
-      startMeasure(gx,gy,gz);
+      const gamma=e.gamma!=null?e.gamma:0;
+      window.removeEventListener("deviceorientation",tmp,true);
+      startMeasure(gamma);
     };
-    window.addEventListener("devicemotion",tmp,true);
+    window.addEventListener("deviceorientation",tmp,true);
     setStatus("센서 연결 중...");
   };
 
   const requestAndStart=()=>{
-    if(typeof DeviceMotionEvent!=="undefined"&&
-       typeof DeviceMotionEvent.requestPermission==="function"){
-      DeviceMotionEvent.requestPermission()
-        .then((p)=>{ if(p==="granted") doStart(); else setStatus("권한이 거부됐습니다"); })
+    if(typeof DeviceOrientationEvent!=="undefined"&&
+       typeof DeviceOrientationEvent.requestPermission==="function"){
+      DeviceOrientationEvent.requestPermission()
+        .then((p)=>{ if(p==="granted") doStart(); else setStatus("권한 거부됨"); })
         .catch(()=>setStatus("권한 오류"));
     } else {
       doStart();
@@ -1756,29 +1766,31 @@ function RomGoniometerPopup({onClose, onInsert}){
   const stop=()=>{
     setRunning(false);
     if(handlerRef.current){
-      window.removeEventListener("devicemotion",handlerRef.current,true);
+      window.removeEventListener("deviceorientation",handlerRef.current,true);
       handlerRef.current=null;
     }
-    setFrozen(angleRef.current);
+    setFrozen(relAngleRef.current);
     setStatus("정지됐습니다. 입력하시겠습니까?");
   };
 
   const reset=()=>{
     setRunning(false);
-    setAngle(0);
+    setRelAngle(0);
     setFrozen(null);
-    angleRef.current=0;
-    baseAngleRef.current=null;
+    relAngleRef.current=0;
+    baseGammaRef.current=null;
     if(handlerRef.current){
-      window.removeEventListener("devicemotion",handlerRef.current,true);
+      window.removeEventListener("deviceorientation",handlerRef.current,true);
       handlerRef.current=null;
     }
     setStatus("시작 버튼을 누르세요");
   };
 
   const insert=()=>{
-    const val=frozen!=null?frozen:angle;
-    onInsert(String(round5(val)));
+    const val=frozen!=null?frozen:relAngle;
+    const rounded=round5(val);
+    // 절대값으로 입력 (음수면 -45 그대로 넣기)
+    onInsert(String(rounded));
     reset(); onClose();
   };
 
@@ -1786,9 +1798,12 @@ function RomGoniometerPopup({onClose, onInsert}){
     drawGonio(canvasRef.current,0,false);
     return ()=>{
       if(handlerRef.current)
-        window.removeEventListener("devicemotion",handlerRef.current,true);
+        window.removeEventListener("deviceorientation",handlerRef.current,true);
     };
   },[]);
+
+  const display=frozen!=null?frozen:relAngle;
+  const rounded=round5(display);
 
   return ReactDOM.createPortal(
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:9000,
@@ -1805,11 +1820,11 @@ function RomGoniometerPopup({onClose, onInsert}){
             닫기
           </button>
         </div>
-        <div style={{padding:"12px 16px 4px",background:"#fff"}}>
-          <canvas ref={canvasRef} width={268} height={150} style={{width:"100%",display:"block"}}/>
+        <div style={{padding:"12px 16px 4px"}}>
+          <canvas ref={canvasRef} width={268} height={268} style={{width:"100%",display:"block"}}/>
         </div>
         <div style={{textAlign:"center",fontSize:"12px",color:"#64748b",
-          padding:"2px 16px 8px",minHeight:"18px"}}>{status}</div>
+          padding:"2px 16px 6px",minHeight:"18px"}}>{status}</div>
         <div style={{display:"flex",gap:"10px",padding:"4px 16px 18px"}}>
           <button onClick={reset}
             style={{width:"58px",height:"60px",borderRadius:"14px",border:"1.5px solid #e2e8f0",
@@ -1831,11 +1846,13 @@ function RomGoniometerPopup({onClose, onInsert}){
             </button>
           )}
           {frozen!=null&&(
-            <button onClick={insert}
-              style={{flex:1,height:"60px",borderRadius:"14px",border:"2px solid #16a34a",
-                background:"#16a34a",color:"#fff",fontSize:"18px",fontWeight:700,cursor:"pointer"}}>
-              ✓ 입력
-            </button>
+            <div style={{flex:1,display:"flex",flexDirection:"column",gap:"6px"}}>
+              <button onClick={insert}
+                style={{width:"100%",height:"60px",borderRadius:"14px",border:"2px solid #16a34a",
+                  background:"#16a34a",color:"#fff",fontSize:"16px",fontWeight:700,cursor:"pointer"}}>
+                ✓ 입력 ({(rounded>0?"+":"")+rounded}°)
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -1843,6 +1860,7 @@ function RomGoniometerPopup({onClose, onInsert}){
     document.body
   );
 }
+
 
 
 
