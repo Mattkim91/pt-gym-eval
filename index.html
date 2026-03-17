@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.33</title>
+  <title>환자 평가 관리 v6.42</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -433,7 +433,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.33";
+const APP_VERSION = "v6.42";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2464,44 +2464,76 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
           );
         }
 
-        const isTrialField = ["trial1","trial2","trial3"].includes(field.id);
+        const trialNum = field.id==="trial1"?1:field.id==="trial2"?2:field.id==="trial3"?3:0;
+        const isTrialField = trialNum>0;
+        const stepsId = "steps"+trialNum;
 
         if(isTrialField){
           const tm=timers[field.id]||{running:false,elapsed:0};
-          const display=tm.running
-            ? tm.elapsed.toFixed(2)
-            : (fd[field.id]||"");
+          const display=tm.running ? tm.elapsed.toFixed(2) : (fd[field.id]||"");
+          const stepsDisabled = isTestFailure;
           return(
-            <div key={field.id} style={{...S.fieldRow, opacity: disabled ? 0.35 : 1, pointerEvents: disabled ? "none" : "auto"}}>
-              <label style={S.fieldLabel}>{field.label}</label>
-              <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-                <button onClick={()=>resetTimer(field.id)}
-                  style={{flexShrink:0,height:"42px",padding:"0 15px",borderRadius:"9px",border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#94a3b8",fontSize:"12px",cursor:"pointer"}}>
-                  ↺
-                </button>
-                <input style={{...S.input, fontVariantNumeric:"tabular-nums", color: tm.running?"#2563eb":"#1e293b", fontWeight: tm.running?700:400}}
-                  type="text" inputMode="decimal"
-                  placeholder={field.placeholder}
-                  value={display}
-                  onChange={e=>{if(!tm.running)setF(field.id,e.target.value);}}
-                  readOnly={tm.running}
-                />
-                {!tm.running?(
-                  <button onClick={()=>startTimer(field.id)}
-                    style={{flexShrink:0,height:"84px",padding:"0 28px",borderRadius:"14px",border:`2px solid ${col.accent}`,background:col.bg,color:col.accent,fontSize:"22px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                    ▶ 시작
-                  </button>
-                ):(
-                  <button onClick={()=>stopTimer(field.id)}
-                    style={{flexShrink:0,height:"84px",padding:"0 28px",borderRadius:"14px",border:"2px solid #ef4444",background:"#fef2f2",color:"#ef4444",fontSize:"22px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                    ■ 정지
-                  </button>
-                )}
+            <div key={field.id} style={{borderRadius:"12px",border:`1.5px solid ${col.border}`,background:col.bg,padding:"12px 14px",marginBottom:"12px",opacity:disabled?0.35:1,pointerEvents:disabled?"none":"auto"}}>
+              {/* 시행 헤더 */}
+              <div style={{textAlign:"center",marginBottom:"10px"}}>
+                <span style={{fontSize:"12px",fontWeight:700,color:col.accent,border:`1.5px solid ${col.border}`,borderRadius:"7px",padding:"2px 14px",display:"inline-block",background:"#fff"}}>
+                  시행 {trialNum}
+                </span>
               </div>
-
+              {/* 좌우 2단 레이아웃 */}
+              <div style={{display:"flex",gap:"10px",alignItems:"stretch"}}>
+                {/* 왼쪽: 입력칸들 */}
+                <div style={{display:"flex",flexDirection:"column",gap:"8px",flex:"0 0 auto"}}>
+                  {/* 시간 */}
+                  <div>
+                    <div style={{fontSize:"11px",fontWeight:700,color:"#64748b",marginBottom:"4px",textTransform:"uppercase",letterSpacing:"0.5px"}}>시간 (초)</div>
+                    <div style={{display:"flex",alignItems:"center",gap:"5px"}}>
+                      <input style={{border:"1.5px solid #e2e8f0",borderRadius:"8px",padding:"10px 6px",outline:"none",color:tm.running?"#2563eb":"#1e293b",width:"70px",fontSize:"16px",textAlign:"center",fontVariantNumeric:"tabular-nums",fontWeight:tm.running?700:400,background:"#fff"}}
+                        type="text" inputMode="decimal"
+                        placeholder="" value={display}
+                        onChange={e=>{if(!tm.running)setF(field.id,e.target.value);}}
+                        onKeyDown={e=>{if(e.key==="Enter"||e.key==="Go"||e.key==="Next")e.target.blur();}}
+                        readOnly={tm.running}
+                      />
+                      <button onClick={()=>resetTimer(field.id)}
+                        style={{flexShrink:0,height:"42px",padding:"0 10px",borderRadius:"9px",border:"1.5px solid #e2e8f0",background:"#fff",color:"#94a3b8",fontSize:"12px",cursor:"pointer"}}>
+                        ↺
+                      </button>
+                    </div>
+                  </div>
+                  {/* 스텝 수 */}
+                  <div style={{opacity:stepsDisabled?0.35:1,pointerEvents:stepsDisabled?"none":"auto"}}>
+                    <div style={{fontSize:"11px",fontWeight:700,color:"#64748b",marginBottom:"4px",textTransform:"uppercase",letterSpacing:"0.5px"}}>스텝 수</div>
+                    <input style={{border:"1.5px solid #e2e8f0",borderRadius:"8px",padding:"10px 6px",outline:"none",color:"#1e293b",width:"70px",fontSize:"16px",textAlign:"center",background:"#fff"}}
+                      inputMode="numeric" placeholder=""
+                      value={fd[stepsId]||""} onChange={e=>setF(stepsId,e.target.value)} onKeyDown={e=>{if(e.key==="Enter"||e.key==="Go"||e.key==="Next")e.target.blur();}}/>
+                  </div>
+                </div>
+                {/* 오른쪽: 시작/정지 버튼 전체 높이 */}
+                <div style={{flex:1,display:"flex"}}>
+                  {!tm.running?(
+                    <button onClick={()=>startTimer(field.id)}
+                      style={{flex:1,borderRadius:"14px",border:`2px solid ${col.accent}`,background:"#fff",color:col.accent,fontSize:"28px",fontWeight:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"2px"}}>
+                      <span style={{fontSize:"11px",fontWeight:600,opacity:0.55}}>시행 {trialNum}</span>
+                      <span>▶ 시작</span>
+                    </button>
+                  ):(
+                    <button
+                      onTouchEnd={e=>{e.preventDefault();stopTimer(field.id);}}
+                      onClick={()=>stopTimer(field.id)}
+                      style={{flex:1,borderRadius:"14px",border:"2px solid #ef4444",background:"#fef2f2",color:"#ef4444",fontSize:"28px",fontWeight:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"2px"}}>
+                      <span style={{fontSize:"11px",fontWeight:600,opacity:0.55}}>시행 {trialNum}</span>
+                      <span>■ 정지</span>
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           );
         }
+
+        // steps 필드는 trial 블록에서 처리하므로 여기서 스킵
+        if(["steps1","steps2","steps3"].includes(field.id)) return null;
 
         if(field.type==="date"){
           const isBBS = template?.fields?.some(f=>f.type==="bbs_full");
@@ -2548,15 +2580,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
             ):field.type==="textarea"?(
               <textarea style={S.textarea} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
             ):(
-              (field.id==="steps1"||field.id==="steps2"||field.id==="steps3")?(
-                <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-                  <button onClick={()=>setF(field.id,"")}
-                    style={{flexShrink:0,height:"42px",padding:"0 15px",borderRadius:"9px",border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#94a3b8",fontSize:"12px",cursor:"pointer"}}>
-                    ↺
-                  </button>
-                  <input style={{...S.input}} inputMode="numeric" placeholder="" value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
-                </div>
-              ):(
+              (
                 <input style={{...S.input,borderColor:field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"#60a5fa":undefined, borderWidth:field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"2px":undefined}} type="text" inputMode={field.inputMode||(field.type==="number"?"decimal":undefined)} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
               )
             )}
