@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.48</title>
+  <title>환자 평가 관리 v6.51</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -448,7 +448,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.48";
+const APP_VERSION = "v6.51";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1200,7 +1200,7 @@ function DisRomInput({val, onChange, readOnly}){
     <input
       type="text" inputMode="numeric"
       value={val||""}
-      onChange={e=>onChange(e.target.value.replace(/[^0-9-]/g,""))}
+      onChange={e=>onChange(e.target.value.replace(/[^0-9.\-]/g,""))}
       readOnly={readOnly}
       style={{width:"36px",border:"1px solid #cbd5e1",borderRadius:"4px",padding:"2px 2px",
         fontSize:"12px",textAlign:"center",outline:"none",background:readOnly?"#f8fafc":"#fff",color:"#1e293b"}}
@@ -1643,7 +1643,11 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
     if(goBackRef) goBackRef.current=()=>goBackLatest.current();
   });
 
-  const getRecs=(k)=>(db.records[patient?.id]?.[k]||[]).slice().sort((a,b)=>b.savedAt-a.savedAt);
+  const getRecs=(k)=>(db.records[patient?.id]?.[k]||[]).slice().sort((a,b)=>{
+    const da=a.data?.date||"";const db2=b.data?.date||"";
+    if(da!==db2) return db2.localeCompare(da);
+    return b.savedAt-a.savedAt;
+  });
   const saveRec=(k,data,rid)=>{
     const rec={...db.records},pid=patient.id;
     if(!rec[pid])rec[pid]={};if(!rec[pid][k])rec[pid][k]=[];
@@ -1821,7 +1825,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
               saveRec(ek,data,editRec?.id??null);
               evalFormDirtyRef.current=false;
               setEditRec(null);
-              if(tab==="date"){setRv("eval-select");}
+              if(tab==="date"){setRv("date-view");}
               else{setRv("eval-history");}
               if(isAuto) showToast("입력 중이던 내용이 자동저장됐습니다",5000);
               else if(showToast) showToast("✅ 저장됐습니다");
@@ -1829,7 +1833,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
             onCancel={()=>{
               evalFormDirtyRef.current=false;
               setEditRec(null);
-              if(tab==="date"){setRv("eval-select");}
+              if(tab==="date"){setRv("date-view");}
               else{setRv("eval-history");}
             }}/>
         )}
@@ -2795,7 +2799,9 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                 {/* 오른쪽: 시작/정지 버튼 전체 높이 */}
                 <div style={{flex:1,display:"flex"}}>
                   {!tm.running?(
-                    <button onClick={()=>startTimer(field.id)}
+                    <button
+                      onTouchEnd={e=>{e.preventDefault();startTimer(field.id);}}
+                      onClick={()=>startTimer(field.id)}
                       style={{flex:1,borderRadius:"14px",border:`2px solid ${col.accent}`,background:"#fff",color:col.accent,fontSize:"28px",fontWeight:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"2px"}}>
                       <span style={{fontSize:"11px",fontWeight:600,opacity:0.55}}>시행 {trialNum}</span>
                       <span>▶ 시작</span>
