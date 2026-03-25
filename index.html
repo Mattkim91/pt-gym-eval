@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.52</title>
+  <title>환자 평가 관리 v6.54</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -448,7 +448,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.52";
+const APP_VERSION = "v6.54";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2292,6 +2292,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
   // 타이머 상태: {trial1: {running, startTime, elapsed}, ...}
   const [timers,setTimers]=useState({trial1:{running:false,elapsed:0},trial2:{running:false,elapsed:0},trial3:{running:false,elapsed:0}});
   const timerRefs=React.useRef({});
+  const startBtnTouch=React.useRef({moved:false,startX:0,startY:0}); // 시작 버튼 드래그 감지용
 
   const startTimer=(id)=>{
     const startTime=Date.now()-((timers[id]?.elapsed||0)*1000);
@@ -2798,21 +2799,30 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                 </div>
                 {/* 오른쪽: 시작/정지 버튼 전체 높이 */}
                 <div style={{flex:1,display:"flex"}}>
-                  {!tm.running?(
-                    <button
-                      onTouchEnd={e=>{e.preventDefault();startTimer(field.id);}}
-                      onClick={()=>startTimer(field.id)}
-                      style={{flex:1,borderRadius:"14px",border:`2px solid ${col.accent}`,background:"#fff",color:col.accent,fontSize:"28px",fontWeight:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"2px"}}>
-                      <span style={{fontSize:"11px",fontWeight:600,opacity:0.55}}>시행 {trialNum}</span>
-                      <span>▶ 시작</span>
-                    </button>
-                  ):(
+                  {tm.running?(
                     <button
                       onTouchEnd={e=>{e.preventDefault();stopTimer(field.id);}}
                       onClick={()=>stopTimer(field.id)}
                       style={{flex:1,borderRadius:"14px",border:"2px solid #ef4444",background:"#fef2f2",color:"#ef4444",fontSize:"28px",fontWeight:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"2px"}}>
                       <span style={{fontSize:"11px",fontWeight:600,opacity:0.55}}>시행 {trialNum}</span>
                       <span>■ 정지</span>
+                    </button>
+                  ):fd[field.id]?(
+                    <button
+                      disabled
+                      style={{flex:1,borderRadius:"14px",border:"2px solid #cbd5e1",background:"#f1f5f9",color:"#94a3b8",fontSize:"20px",fontWeight:700,cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"2px"}}>
+                      <span style={{fontSize:"11px",fontWeight:600,opacity:0.7}}>시행 {trialNum}</span>
+                      <span>✓ 측정완료</span>
+                    </button>
+                  ):(
+                    <button
+                      onTouchStart={e=>{const t=e.touches?.[0];if(t){startBtnTouch.current={moved:false,startX:t.clientX,startY:t.clientY};}}}
+                      onTouchMove={e=>{const t=e.touches?.[0];if(t){const dx=Math.abs(t.clientX-startBtnTouch.current.startX);const dy=Math.abs(t.clientY-startBtnTouch.current.startY);if(dx>5||dy>5)startBtnTouch.current.moved=true;}}}
+                      onTouchEnd={e=>{if(startBtnTouch.current.moved)return;e.preventDefault();startTimer(field.id);}}
+                      onClick={()=>startTimer(field.id)}
+                      style={{flex:1,borderRadius:"14px",border:`2px solid ${col.accent}`,background:"#fff",color:col.accent,fontSize:"28px",fontWeight:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"2px"}}>
+                      <span style={{fontSize:"11px",fontWeight:600,opacity:0.55}}>시행 {trialNum}</span>
+                      <span>▶ 시작</span>
                     </button>
                   )}
                 </div>
