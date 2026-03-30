@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.59</title>
+  <title>환자 평가 관리 v6.61</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -456,7 +456,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.59";
+const APP_VERSION = "v6.61";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2100,133 +2100,51 @@ function FgaFloatingTimer({onClose}){
 }
 
 
-function MmtSelect({value, onChange}){
-  const [open,setOpen]=React.useState(false);
-  const btnRef=React.useRef(null);
-  const portalId=React.useRef("mmt-portal-"+Math.random().toString(36).slice(2));
-  const posRef=React.useRef({top:0,left:0});
-  const [pos,setPos]=React.useState({top:0,left:0});
-  const rafRef=React.useRef(null);
-  const ts=React.useRef({startX:0,startY:0,moved:false,startedInPortal:false});
-
-  const calcPos=()=>{
-    if(!btnRef.current) return;
-    const r=btnRef.current.getBoundingClientRect();
-    const next={top:r.bottom+3, left:r.left+r.width/2};
-    // 실제로 바뀐 경우에만 setState (불필요한 리렌더 방지)
-    if(next.top!==posRef.current.top||next.left!==posRef.current.left){
-      posRef.current=next;
-      setPos(next);
+function MmtInput({value, onChange}){
+  const append=(ch)=>{
+    const v=(value||"").trim();
+    const num=v.replace(/[+\-]/g,"");
+    const hasMinus=v.includes("-");
+    const hasPlus=v.includes("+");
+    if(ch==="-"){
+      if(hasMinus) onChange(num);
+      else if(hasPlus) onChange(num+"-");
+      else onChange(v+"-");
+    } else if(ch==="+"){
+      if(hasPlus) onChange(num);
+      else if(hasMinus) onChange(num+"+");
+      else onChange(v+"+");
     }
   };
-
-  // 열려있는 동안 rAF 루프로 버튼 위치를 매 프레임 추적
-  // → scroll 이벤트 방식 대신 사용하면 iOS overflow 컨테이너 스크롤도 완벽 추적
-  useEffect(()=>{
-    if(!open){ if(rafRef.current) cancelAnimationFrame(rafRef.current); return; }
-    calcPos();
-    const loop=()=>{ calcPos(); rafRef.current=requestAnimationFrame(loop); };
-    rafRef.current=requestAnimationFrame(loop);
-    return()=>{ if(rafRef.current) cancelAnimationFrame(rafRef.current); };
-  },[open]);
-
-  useEffect(()=>{
-    if(!open) return;
-    const pid=portalId.current;
-    const getPortal=()=>document.getElementById(pid);
-
-    const onTouchStart=(e)=>{
-      const t=e.touches?.[0];
-      if(!t) return;
-      const portal=getPortal();
-      ts.current={
-        startX:t.clientX, startY:t.clientY,
-        moved:false,
-        startedInPortal:!!(portal&&portal.contains(e.target))
-      };
-    };
-
-    const onTouchMove=(e)=>{
-      const t=e.touches?.[0];
-      if(!t) return;
-      const dx=Math.abs(t.clientX-ts.current.startX);
-      const dy=Math.abs(t.clientY-ts.current.startY);
-      if(dx>5||dy>5) ts.current.moved=true;
-      // 포털 내부: 수직 스크롤(dy>dx)이면 허용 → 드롭다운 자체 스크롤
-      //           수평이면 막음
-      // 포털 외부: 전혀 막지 않음 → 바깥 페이지 스크롤 자유롭게
-      if(ts.current.startedInPortal && dx>=dy) e.preventDefault();
-    };
-
-    const onTouchEnd=(e)=>{
-      if(ts.current.moved) return;
-      const t=e.changedTouches?.[0];
-      if(!t) return;
-      const el=document.elementFromPoint(t.clientX,t.clientY);
-      const portal=getPortal();
-      const isInPortal=portal&&portal.contains(el);
-      const isInBtn=btnRef.current&&btnRef.current.contains(el);
-      if(isInPortal){
-        const item=el?.closest("[data-mmt]");
-        if(item){ e.preventDefault(); onChange(item.getAttribute("data-mmt-val")); setOpen(false); }
-      } else if(!isInBtn){
-        setOpen(false);
-      }
-    };
-
-    const onMouseDown=(e)=>{
-      const portal=getPortal();
-      if(!portal?.contains(e.target)&&!btnRef.current?.contains(e.target)) setOpen(false);
-    };
-
-    document.addEventListener("touchstart",onTouchStart,{passive:true});
-    document.addEventListener("touchmove",onTouchMove,{passive:false});
-    document.addEventListener("touchend",onTouchEnd,{passive:false});
-    document.addEventListener("mousedown",onMouseDown);
-    return()=>{
-      document.removeEventListener("touchstart",onTouchStart);
-      document.removeEventListener("touchmove",onTouchMove);
-      document.removeEventListener("touchend",onTouchEnd);
-      document.removeEventListener("mousedown",onMouseDown);
-    };
-  },[open, onChange]);
-
-  const display=value===""?"—":value;
-
-  const dropdown=open&&ReactDOM.createPortal(
-    <div
-      id={portalId.current}
-      onWheel={e=>e.stopPropagation()}
-      style={{position:"fixed",top:pos.top,left:pos.left,transform:"translateX(-50%)",zIndex:9000,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:"10px",boxShadow:"0 8px 24px rgba(0,0,0,0.18)",overflowY:"auto",overflowX:"hidden",maxHeight:"260px",minWidth:"82px",WebkitOverflowScrolling:"touch"}}>
-      {MMT_OPTIONS.map(o=>{
-        const on=value===o;
-        return(
-          <div key={o}
-            data-mmt="1"
-            data-mmt-val={o}
-            onMouseUp={e=>{e.stopPropagation();onChange(o);setOpen(false);}}
-            style={{padding:"11px 14px",fontSize:"14px",fontWeight:on?700:400,color:on?"#e8961e":"#1e293b",background:on?"#fef9f0":"#fff",cursor:"pointer",textAlign:"center",borderBottom:"1px solid #f1f5f9",userSelect:"none",WebkitUserSelect:"none"}}>
-            {o===""?"—":o}
-          </div>
-        );
-      })}
-    </div>,
-    document.body
-  );
-
+  const sideBtnStyle={
+    width:"22px",height:"34px",border:"none",borderRadius:0,
+    background:"transparent",color:"#94a3b8",fontSize:"14px",fontWeight:700,
+    cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+    flexShrink:0,WebkitTapHighlightColor:"transparent",lineHeight:1,padding:0,
+  };
   return(
-    <div style={{position:"relative",display:"inline-block"}}>
-      <button ref={btnRef}
-        onClick={e=>{e.stopPropagation();calcPos();setOpen(o=>!o);}}
-        style={{width:"70px",height:"38px",border:"1.5px solid #e2e8f0",borderRadius:"8px",background:"#fff",color:value===""?"#94a3b8":"#1e293b",fontSize:"14px",fontWeight:value===""?400:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:"3px",userSelect:"none",WebkitUserSelect:"none"}}>
-        {display}
-        <span style={{fontSize:"9px",color:"#94a3b8",marginTop:"1px"}}>{open?"▲":"▼"}</span>
-      </button>
-      {dropdown}
+    <div style={{display:"inline-flex",alignItems:"center",
+      border:"1.5px solid #e2e8f0",borderRadius:"9px",overflow:"hidden",
+      background:"#fff",height:"34px",width:"88px"}}>
+      <button
+        onTouchStart={e=>e.preventDefault()}
+        onMouseDown={e=>{e.preventDefault();append("-");}}
+        style={sideBtnStyle}>−</button>
+      <input
+        type="text" inputMode="numeric"
+        value={value||""}
+        onChange={e=>onChange(e.target.value.replace(/[^0-9+\-]/g,""))}
+        style={{flex:1,width:0,height:"100%",border:"none",borderLeft:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",
+          padding:"0 2px",outline:"none",color:"#1e293b",fontSize:"15px",fontWeight:600,
+          textAlign:"center",background:"#fff"}}
+      />
+      <button
+        onTouchStart={e=>e.preventDefault()}
+        onMouseDown={e=>{e.preventDefault();append("+");}}
+        style={sideBtnStyle}>+</button>
     </div>
   );
 }
-
 
 
 function Toast({msg}){
@@ -2763,9 +2681,9 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                     {grp.sections.map((sec,si)=>(
                       <table key={si} style={{...S.table,marginBottom:0,tableLayout:"fixed"}}>
                         <thead><tr>
-                          <th style={{...S.th,width:"30%",background:"#fef9f0",color:"#7a4d0a",textAlign:"center",wordBreak:"break-word",fontSize:"11px"}}>{sec.title}</th>
-                          <th style={{...S.th,width:"35%",textAlign:"center"}}>Right</th>
-                          <th style={{...S.th,width:"35%",textAlign:"center"}}>Left</th>
+                          <th style={{...S.th,width:"24%",background:"#fef9f0",color:"#7a4d0a",textAlign:"center",wordBreak:"break-word",fontSize:"11px"}}>{sec.title}</th>
+                          <th style={{...S.th,width:"38%",textAlign:"center"}}>Right</th>
+                          <th style={{...S.th,width:"38%",textAlign:"center"}}>Left</th>
                         </tr></thead>
                         <tbody>
                           {sec.rows.map((row,ri)=>{
@@ -2774,10 +2692,10 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                               <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
                                 <td style={{...S.td,fontSize:"11px",paddingLeft:"10px",wordBreak:"break-word",lineHeight:1.4,color:"#475569"}}>{row}</td>
                                 <td style={{...S.td,textAlign:"center"}}>
-                                  <MmtSelect value={md[key]?.right??""} onChange={v=>{markDirty();setMmt(gi,si,ri,"right",v);}}/>
+                                  <MmtInput value={md[key]?.right??""} onChange={v=>{markDirty();setMmt(gi,si,ri,"right",v);}}/>
                                 </td>
                                 <td style={{...S.td,textAlign:"center"}}>
-                                  <MmtSelect value={md[key]?.left??""} onChange={v=>{markDirty();setMmt(gi,si,ri,"left",v);}}/>
+                                  <MmtInput value={md[key]?.left??""} onChange={v=>{markDirty();setMmt(gi,si,ri,"left",v);}}/>
                                 </td>
                               </tr>
                             );
@@ -2807,10 +2725,10 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                       <tr key={ri} style={{background:ri%2===0?"#fafbfc":"white"}}>
                         <td style={S.td}>{row[0]}</td><td style={S.td}>{row[1]}</td>
                         <td style={{...S.td,textAlign:"center"}}>
-                          <MmtSelect value={td[ri]?.left??""} onChange={v=>setCell(field.id,ri,"left",v)}/>
+                          <MmtInput value={td[ri]?.left??""} onChange={v=>setCell(field.id,ri,"left",v)}/>
                         </td>
                         <td style={{...S.td,textAlign:"center"}}>
-                          <MmtSelect value={td[ri]?.right??""} onChange={v=>setCell(field.id,ri,"right",v)}/>
+                          <MmtInput value={td[ri]?.right??""} onChange={v=>setCell(field.id,ri,"right",v)}/>
                         </td>
                       </tr>
                     ))}
