@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.61</title>
+  <title>환자 평가 관리 v6.65</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -456,7 +456,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.61";
+const APP_VERSION = "v6.65";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1910,64 +1910,11 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
 
 
 
-function BbsFloatingTimer({onClose}){
-  const [elapsed, setElapsed] = React.useState(0);
-  const [running, setRunning] = React.useState(false);
-  const intervalRef = React.useRef(null);
-  const startRef = React.useRef(0);
-  const baseRef = React.useRef(0);
-  const runningRef = React.useRef(false);
-
-  const fmt=(s)=>{
-    const m=Math.floor(s/60);
-    const sec=(s%60).toFixed(1);
-    return m>0?`${m}분 ${sec}초`:`${sec}초`;
-  };
-
-  const startInterval=()=>{
-    clearInterval(intervalRef.current);
-    startRef.current=Date.now();
-    intervalRef.current=setInterval(()=>{
-      setElapsed((Date.now()-startRef.current)/1000+baseRef.current);
-    },50);
-  };
-
-  const start=()=>{
-    startInterval();
-    runningRef.current=true;
-    setRunning(true);
-  };
-  const stop=()=>{
-    clearInterval(intervalRef.current);
-    baseRef.current=(Date.now()-startRef.current)/1000+baseRef.current;
-    runningRef.current=false;
-    setRunning(false);
-  };
-  const reset=()=>{
-    clearInterval(intervalRef.current);
-    setElapsed(0);
-    runningRef.current=false;
-    setRunning(false);
-    baseRef.current=0;
-  };
-
-  // iOS 백그라운드 복귀 시 interval 재시작
-  React.useEffect(()=>{
-    const onVisibility=()=>{
-      if(document.visibilityState==="visible" && runningRef.current){
-        startInterval();
-      }
-    };
-    document.addEventListener("visibilitychange",onVisibility);
-    return()=>{
-      document.removeEventListener("visibilitychange",onVisibility);
-      clearInterval(intervalRef.current);
-    };
-  },[]);
-
+function BbsFloatingTimer({onClose,elapsed,running,start,stop,reset}){
+  const fmt=(s)=>{const m=Math.floor(s/60);const sec=(s%60).toFixed(1);return m>0?`${m}분 ${sec}초`:`${sec}초`;};
   return ReactDOM.createPortal(
     <>
-      <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:599}}/>
+      {!running&&<div onClick={onClose} onTouchMove={onClose} style={{position:"fixed",inset:0,zIndex:599}}/>}
       <div onClick={e=>e.stopPropagation()}
         style={{position:"fixed",left:"20px",bottom:"90px",zIndex:600,width:"240px",
           background:"#fff",borderRadius:"20px",boxShadow:"0 8px 32px rgba(0,0,0,0.22)",
@@ -2013,48 +1960,11 @@ function BbsFloatingTimer({onClose}){
 }
 
 
-function FgaFloatingTimer({onClose}){
-  const [elapsed, setElapsed] = React.useState(0);
-  const [running, setRunning] = React.useState(false);
-  const intervalRef = React.useRef(null);
-  const startRef = React.useRef(0);
-  const baseRef = React.useRef(0);
-  const runningRef = React.useRef(false);
-
-  const fmt=(s)=>{
-    const m=Math.floor(s/60);
-    const sec=(s%60).toFixed(1);
-    return m>0?`${m}분 ${sec}초`:`${sec}초`;
-  };
-
-  const startInterval=()=>{
-    clearInterval(intervalRef.current);
-    startRef.current=Date.now();
-    intervalRef.current=setInterval(()=>{
-      setElapsed((Date.now()-startRef.current)/1000+baseRef.current);
-    },50);
-  };
-
-  const start=()=>{ startInterval(); runningRef.current=true; setRunning(true); };
-  const stop=()=>{
-    clearInterval(intervalRef.current);
-    baseRef.current=(Date.now()-startRef.current)/1000+baseRef.current;
-    runningRef.current=false; setRunning(false);
-  };
-  const reset=()=>{
-    clearInterval(intervalRef.current);
-    setElapsed(0); runningRef.current=false; setRunning(false); baseRef.current=0;
-  };
-
-  React.useEffect(()=>{
-    const onVisibility=()=>{ if(document.visibilityState==="visible"&&runningRef.current) startInterval(); };
-    document.addEventListener("visibilitychange",onVisibility);
-    return()=>{ document.removeEventListener("visibilitychange",onVisibility); clearInterval(intervalRef.current); };
-  },[]);
-
+function FgaFloatingTimer({onClose,elapsed,running,start,stop,reset}){
+  const fmt=(s)=>{const m=Math.floor(s/60);const sec=(s%60).toFixed(1);return m>0?`${m}분 ${sec}초`:`${sec}초`;};
   return ReactDOM.createPortal(
     <>
-      <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:599}}/>
+      {!running&&<div onClick={onClose} onTouchMove={onClose} style={{position:"fixed",inset:0,zIndex:599}}/>}
       <div onClick={e=>e.stopPropagation()}
         style={{position:"fixed",left:"20px",bottom:"90px",zIndex:600,width:"240px",
           background:"#fff",borderRadius:"20px",boxShadow:"0 8px 32px rgba(0,0,0,0.22)",
@@ -2337,6 +2247,48 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
   const [showFgaTimer,setShowFgaTimer]=useState(false);
   const [fingerOpen,setFingerOpen]=useState(false);
   const [flipLayout,setFlipLayout]=useState(false); // true=시작버튼 우측
+
+  // ── 플로팅 타이머 공용 로직 (창 닫혀도 유지) ──
+  const useFloatingTimer=()=>{
+    const [elapsed,setElapsed]=useState(0);
+    const [running,setRunning]=useState(false);
+    const intervalRef=React.useRef(null);
+    const startRef=React.useRef(0);
+    const baseRef=React.useRef(0);
+    const runningRef=React.useRef(false);
+    const startInterval=()=>{
+      clearInterval(intervalRef.current);
+      startRef.current=Date.now();
+      intervalRef.current=setInterval(()=>{
+        setElapsed((Date.now()-startRef.current)/1000+baseRef.current);
+      },50);
+    };
+    const start=()=>{startInterval();runningRef.current=true;setRunning(true);};
+    const stop=()=>{
+      clearInterval(intervalRef.current);
+      baseRef.current=(Date.now()-startRef.current)/1000+baseRef.current;
+      runningRef.current=false;setRunning(false);
+    };
+    const reset=()=>{
+      clearInterval(intervalRef.current);
+      setElapsed(0);runningRef.current=false;setRunning(false);baseRef.current=0;
+    };
+    useEffect(()=>{
+      const onVis=()=>{
+        if(document.visibilityState==="hidden"&&runningRef.current){
+          baseRef.current=(Date.now()-startRef.current)/1000+baseRef.current;
+          clearInterval(intervalRef.current);
+        } else if(document.visibilityState==="visible"&&runningRef.current){
+          startInterval();
+        }
+      };
+      document.addEventListener("visibilitychange",onVis);
+      return()=>{document.removeEventListener("visibilitychange",onVis);clearInterval(intervalRef.current);};
+    },[]);
+    return {elapsed,running,start,stop,reset};
+  };
+  const bbsTimer=useFloatingTimer();
+  const fgaTimer=useFloatingTimer();
   const markDirty=()=>{ setIsDirty(true); if(dirtyRef) dirtyRef.current=true; };
   const setF=(id,val)=>{markDirty();setFd(prev=>({...prev,[id]:val}));};
   const setCell=(tid,ri,ck,val)=>{markDirty();setFd(prev=>{const arr=[...(prev[tid]||[])];arr[ri]={...arr[ri],[ck]:val};return{...prev,[tid]:arr};});};
@@ -3023,7 +2975,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
     {/* FGA 타이머 플로팅 버튼 */}
     {template?.fields?.some(f=>f.type==="fga_full")&&(
       <>
-        {showFgaTimer&&<FgaFloatingTimer onClose={()=>setShowFgaTimer(false)}/>}
+        {showFgaTimer&&<FgaFloatingTimer onClose={()=>setShowFgaTimer(false)} elapsed={fgaTimer.elapsed} running={fgaTimer.running} start={fgaTimer.start} stop={fgaTimer.stop} reset={fgaTimer.reset}/>}
         <div onClick={()=>setShowFgaTimer(v=>!v)}
           style={{position:"fixed",left:"20px",bottom:"84px",zIndex:500,width:"48px",height:"48px",borderRadius:"50%",
             background:showFgaTimer?"#16a34a":"#f0fdf4",border:"2px solid #16a34a",
@@ -3037,7 +2989,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
     {/* BBS 타이머 플로팅 버튼 */}
     {template?.fields?.some(f=>f.type==="bbs_full")&&(
       <>
-        {showBbsTimer&&<BbsFloatingTimer onClose={()=>setShowBbsTimer(false)}/>}
+        {showBbsTimer&&<BbsFloatingTimer onClose={()=>setShowBbsTimer(false)} elapsed={bbsTimer.elapsed} running={bbsTimer.running} start={bbsTimer.start} stop={bbsTimer.stop} reset={bbsTimer.reset}/>}
         <div onClick={()=>setShowBbsTimer(v=>!v)}
           style={{position:"fixed",left:"20px",bottom:"84px",zIndex:500,width:"48px",height:"48px",borderRadius:"50%",
             background:showBbsTimer?"#6d28d9":"#f3eeff",border:"2px solid #8b5cf6",
