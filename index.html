@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.65</title>
+  <title>환자 평가 관리 v6.66</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -456,7 +456,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.65";
+const APP_VERSION = "v6.66";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2128,40 +2128,50 @@ function App(){
     try{ sessionStorage.setItem("pt_last_state",JSON.stringify({patientId:p.id,view})); }catch{}
   };
   useEffect(()=>{
-    // 단순 전략: guard 하나만 항상 유지
-    // 뒤로가기 발생 → guard가 pop됨 → onPop 실행 → 처리 후 guard 다시 push
+    // guard 2개 전략: 갤럭시 엣지 스와이프는 popstate를 연속 2회 발생시킴
+    // base + guard1 + guard2 구조로 스와이프가 2번 pop해도 base 못 빠져나옴
+    const pushGuards=()=>{
+      history.pushState({level:"guard1"},"");
+      history.pushState({level:"guard2"},"");
+    };
     history.replaceState({level:"base"},"");
-    history.pushState({level:"guard"},"");
+    pushGuards();
 
-    let popLocked = false; // 연속 뒤로가기 중복 실행 방지 락
+    let popLocked = false;
+    let lastPopTime = 0;
 
     const onPop=async()=>{
-      // 락 걸려있으면 즉시 guard 복구 후 무시
-      if(popLocked){ history.pushState({level:"guard"},""); return; }
+      const now = Date.now();
+      // 300ms 이내 연속 pop → 스와이프의 2번째 pop, guard 복구만 하고 무시
+      if(now - lastPopTime < 300){
+        history.pushState({level:"guard2"},"");
+        return;
+      }
+      lastPopTime = now;
+
+      if(popLocked){ pushGuards(); return; }
       popLocked = true;
 
-      // 항상 guard를 즉시 복구 → 앱이 절대 바로 닫히지 않음
-      history.pushState({level:"guard"},"");
+      // 항상 guard 2개 즉시 복구
+      pushGuards();
 
       try{
-        // ContentPanel이 마운트되어 있으면 goBack 처리 시도
         let handled = false;
         if(contentGoBackRef.current){
           handled = await contentGoBackRef.current();
         }
         if(handled){ return; }
 
-        // ContentPanel이 없거나 처리 못함 → 모바일 콘텐츠→목록 전환 시도
         if(mobileViewRef.current==="content"){
           setMobileView("list");
           mobileViewRef.current="list";
           return;
         }
 
-        // 모든 경우의 최상위 → 반드시 종료 확인 팝업
+        // 최상위 → 종료 확인
         const exit = await useConfirmRef.current("앱을 종료하시겠습니까?");
         if(exit){
-          history.go(-2);
+          history.go(-3); // base + guard1 + guard2 제거
           return;
         }
       } finally {
