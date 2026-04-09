@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.66</title>
+  <title>환자 평가 관리 v6.67</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -456,7 +456,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.66";
+const APP_VERSION = "v6.67";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2259,46 +2259,77 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
   const [flipLayout,setFlipLayout]=useState(false); // true=시작버튼 우측
 
   // ── 플로팅 타이머 공용 로직 (창 닫혀도 유지) ──
-  const useFloatingTimer=()=>{
+  const useFloatingTimer=(label)=>{
     const [elapsed,setElapsed]=useState(0);
     const [running,setRunning]=useState(false);
     const intervalRef=React.useRef(null);
-    const startRef=React.useRef(0);
-    const baseRef=React.useRef(0);
+    const bgStartRef=React.useRef(0);  // 백그라운드 진입 시각
+    const baseRef=React.useRef(0);     // 누적 경과 (정지 시점까지)
     const runningRef=React.useRef(false);
+    const elapsedRef=React.useRef(0);  // 탭 타이틀용 최신 elapsed
+
+    // interval: baseRef 기준으로만 계산 (startRef 없음)
     const startInterval=()=>{
       clearInterval(intervalRef.current);
-      startRef.current=Date.now();
+      const t0=Date.now();
+      const base=baseRef.current;
       intervalRef.current=setInterval(()=>{
-        setElapsed((Date.now()-startRef.current)/1000+baseRef.current);
+        const e=(Date.now()-t0)/1000+base;
+        elapsedRef.current=e;
+        setElapsed(e);
       },50);
     };
-    const start=()=>{startInterval();runningRef.current=true;setRunning(true);};
+    const start=()=>{baseRef.current=elapsedRef.current;startInterval();runningRef.current=true;setRunning(true);};
     const stop=()=>{
       clearInterval(intervalRef.current);
-      baseRef.current=(Date.now()-startRef.current)/1000+baseRef.current;
+      baseRef.current=elapsedRef.current;
       runningRef.current=false;setRunning(false);
     };
     const reset=()=>{
       clearInterval(intervalRef.current);
-      setElapsed(0);runningRef.current=false;setRunning(false);baseRef.current=0;
+      baseRef.current=0;elapsedRef.current=0;
+      setElapsed(0);runningRef.current=false;setRunning(false);
     };
     useEffect(()=>{
       const onVis=()=>{
         if(document.visibilityState==="hidden"&&runningRef.current){
-          baseRef.current=(Date.now()-startRef.current)/1000+baseRef.current;
+          // 백그라운드 진입: interval 멈추고 진입 시각 기록
           clearInterval(intervalRef.current);
+          bgStartRef.current=Date.now();
         } else if(document.visibilityState==="visible"&&runningRef.current){
+          // 복귀: 백그라운드 체류 시간을 base에 더하고 재시작
+          const bgElapsed=(Date.now()-bgStartRef.current)/1000;
+          baseRef.current=elapsedRef.current+bgElapsed;
           startInterval();
         }
       };
       document.addEventListener("visibilitychange",onVis);
       return()=>{document.removeEventListener("visibilitychange",onVis);clearInterval(intervalRef.current);};
     },[]);
-    return {elapsed,running,start,stop,reset};
+    return {elapsed,running,start,stop,reset,runningRef,elapsedRef,label};
   };
-  const bbsTimer=useFloatingTimer();
-  const fgaTimer=useFloatingTimer();
+  const bbsTimer=useFloatingTimer("BBS");
+  const fgaTimer=useFloatingTimer("FGA");
+
+  // 탭 타이틀: 실행 중인 타이머 표시
+  useEffect(()=>{
+    const activeTimer=bbsTimer.running?bbsTimer:fgaTimer.running?fgaTimer:null;
+    if(!activeTimer){
+      document.title="환자 평가 관리 "+APP_VERSION;
+      return;
+    }
+    const id=setInterval(()=>{
+      const e=activeTimer.elapsedRef.current;
+      const m=Math.floor(e/60);
+      const s=(e%60).toFixed(1);
+      const ts=m>0?`${m}:${s.padStart(4,"0")}`:`${s}초`;
+      document.title=`⏱ ${ts} | ${activeTimer.label} 타이머`;
+    },100);
+    return()=>{
+      clearInterval(id);
+      document.title="환자 평가 관리 "+APP_VERSION;
+    };
+  },[bbsTimer.running,fgaTimer.running]);
   const markDirty=()=>{ setIsDirty(true); if(dirtyRef) dirtyRef.current=true; };
   const setF=(id,val)=>{markDirty();setFd(prev=>({...prev,[id]:val}));};
   const setCell=(tid,ri,ck,val)=>{markDirty();setFd(prev=>{const arr=[...(prev[tid]||[])];arr[ri]={...arr[ri],[ck]:val};return{...prev,[tid]:arr};});};
