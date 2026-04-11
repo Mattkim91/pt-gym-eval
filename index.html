@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.69</title>
+  <title>환자 평가 관리 v6.70</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -456,7 +456,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.69";
+const APP_VERSION = "v6.70";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2354,8 +2354,8 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
   const beepHaptic=(type)=>{
     // 햅틱
     if(navigator.vibrate){
-      if(type==="start") navigator.vibrate([30,15,30]);
-      else navigator.vibrate([30,15,30]);
+      if(type==="start") navigator.vibrate(40);
+      else navigator.vibrate([40,60,40]);
     }
     // 음: 당=600Hz 땅=900Hz, 각 음 0.1초, 간격 0.04초
     try{
