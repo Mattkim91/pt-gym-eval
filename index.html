@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.70</title>
+  <title>환자 평가 관리 v6.71</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -456,7 +456,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.70";
+const APP_VERSION = "v6.71";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1561,18 +1561,31 @@ function RecordSummary({evalKey,data,col,templates}){
         if(field.type==="bbs_full"){
           const scores=val||[];
           const total=data.bbs_total??scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          const rows=[[0,1,2,3,4],[5,6,7,8,9],[10,11,12,13]];
           return(
-            <div key={field.id}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"#f3eeff",borderRadius:"8px",border:"1.5px solid #8b5cf6",marginBottom:"8px"}}>
-                <span style={{fontSize:"12px",fontWeight:700,color:"#4c1d95"}}>BBS 총점</span>
-                <span style={{fontSize:"20px",fontWeight:800,color:"#8b5cf6"}}>{total}<span style={{fontSize:"12px",color:"#94a3b8",fontWeight:400}}> / 56</span></span>
+            <div key={field.id} style={{background:"#f3eeff",border:"1.5px solid #c4b5fd",borderRadius:"12px",padding:"12px 14px"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"10px"}}>
+                <span style={{fontSize:"12px",fontWeight:800,color:"#4c1d95"}}>📋 BBS 답안 요약</span>
+                <span style={{fontSize:"16px",fontWeight:800,color:"#8b5cf6"}}>총 {total}점 <span style={{fontSize:"11px",color:"#94a3b8",fontWeight:400}}>/ 56</span></span>
               </div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
-                {BBS_ITEMS.map((item,ri)=>{
-                  const s=scores[ri];
-                  return <span key={ri} style={{fontSize:"11px",padding:"2px 8px",borderRadius:"20px",background:s!==null&&s!==undefined?"#f3eeff":"#f1f5f9",color:s!==null&&s!==undefined?"#8b5cf6":"#94a3b8",fontWeight:600}}>{ri+1}: {s!==null&&s!==undefined?s+"점":"—"}</span>;
-                })}
-              </div>
+              {rows.map((row,ri)=>(
+                <div key={ri} style={{display:"flex",gap:"6px",marginBottom:ri<2?"8px":"0"}}>
+                  {row.map(idx=>{
+                    const s=scores[idx];
+                    const filled=s!==null&&s!==undefined;
+                    return(
+                      <div key={idx} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"2px"}}>
+                        <div style={{width:"32px",height:"32px",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:"14px",
+                          background:filled?"#8b5cf6":"#fff",color:filled?"#fff":"#94a3b8",
+                          border:`1.5px solid ${filled?"#8b5cf6":"#cbd5e1"}`}}>
+                          {filled?s:"·"}
+                        </div>
+                        <span style={{fontSize:"9px",color:"#94a3b8",fontWeight:600}}>{idx+1}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           );
         }
@@ -1580,18 +1593,31 @@ function RecordSummary({evalKey,data,col,templates}){
         if(field.type==="fga_full"){
           const scores=val||[];
           const total=data.fga_total??scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          const rows=[[0,1,2,3,4],[5,6,7,8,9]];
           return(
-            <div key={field.id}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"#f0fdf4",borderRadius:"8px",border:"1.5px solid #16a34a",marginBottom:"8px"}}>
-                <span style={{fontSize:"12px",fontWeight:700,color:"#14532d"}}>FGA 총점</span>
-                <span style={{fontSize:"20px",fontWeight:800,color:"#16a34a"}}>{total}<span style={{fontSize:"12px",color:"#94a3b8",fontWeight:400}}> / 30</span></span>
+            <div key={field.id} style={{background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:"12px",padding:"12px 14px"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"10px"}}>
+                <span style={{fontSize:"12px",fontWeight:800,color:"#14532d"}}>📋 FGA 답안 요약</span>
+                <span style={{fontSize:"16px",fontWeight:800,color:"#16a34a"}}>총 {total}점 <span style={{fontSize:"11px",color:"#94a3b8",fontWeight:400}}>/ 30</span></span>
               </div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
-                {FGA_ITEMS.map((item,ri)=>{
-                  const s=scores[ri];
-                  return <span key={ri} style={{fontSize:"11px",padding:"2px 8px",borderRadius:"20px",background:s!==null&&s!==undefined?"#f0fdf4":"#f1f5f9",color:s!==null&&s!==undefined?"#16a34a":"#94a3b8",fontWeight:600,border:"1px solid "+(s!==null&&s!==undefined?"#bbf7d0":"#e2e8f0")}}>{ri+1}: {s!==null&&s!==undefined?s+"점":"—"}</span>;
-                })}
-              </div>
+              {rows.map((row,ri)=>(
+                <div key={ri} style={{display:"flex",gap:"6px",marginBottom:ri<1?"8px":"0"}}>
+                  {row.map(idx=>{
+                    const s=scores[idx];
+                    const filled=s!==null&&s!==undefined;
+                    return(
+                      <div key={idx} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"2px"}}>
+                        <div style={{width:"32px",height:"32px",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:"14px",
+                          background:filled?"#16a34a":"#fff",color:filled?"#fff":"#94a3b8",
+                          border:`1.5px solid ${filled?"#16a34a":"#cbd5e1"}`}}>
+                          {filled?s:"·"}
+                        </div>
+                        <span style={{fontSize:"9px",color:"#94a3b8",fontWeight:600}}>{idx+1}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           );
         }
@@ -1600,15 +1626,25 @@ function RecordSummary({evalKey,data,col,templates}){
           const scores=val||[];
           const total=data.fogq_total??scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
           return(
-            <div key={field.id}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"#fef3f2",borderRadius:"8px",border:"1.5px solid #f97316",marginBottom:"8px"}}>
-                <span style={{fontSize:"12px",fontWeight:700,color:"#7c2d12"}}>FOG-Q 총점</span>
-                <span style={{fontSize:"20px",fontWeight:800,color:"#f97316"}}>{total}<span style={{fontSize:"12px",color:"#94a3b8",fontWeight:400}}> / 24</span></span>
+            <div key={field.id} style={{background:"#fef3f2",border:"1.5px solid #fdba74",borderRadius:"12px",padding:"12px 14px"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"10px"}}>
+                <span style={{fontSize:"12px",fontWeight:800,color:"#7c2d12"}}>📋 FOG-Q 답안 요약</span>
+                <span style={{fontSize:"16px",fontWeight:800,color:"#f97316"}}>총 {total}점 <span style={{fontSize:"11px",color:"#94a3b8",fontWeight:400}}>/ 24</span></span>
               </div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
-                {FOGQ_ITEMS.map((item,ri)=>{
-                  const s=scores[ri];
-                  return <span key={ri} style={{fontSize:"11px",padding:"2px 8px",borderRadius:"20px",background:s!==null&&s!==undefined?"#fef3f2":"#f1f5f9",color:s!==null&&s!==undefined?"#f97316":"#94a3b8",fontWeight:600,border:"1px solid "+(s!==null&&s!==undefined?"#fed7aa":"#e2e8f0")}}>{ri+1}: {s!==null&&s!==undefined?s+"점":"—"}</span>;
+              <div style={{display:"flex",gap:"6px"}}>
+                {FOGQ_ITEMS.map((_,idx)=>{
+                  const s=scores[idx];
+                  const filled=s!==null&&s!==undefined;
+                  return(
+                    <div key={idx} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"2px"}}>
+                      <div style={{width:"32px",height:"32px",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:"14px",
+                        background:filled?"#f97316":"#fff",color:filled?"#fff":"#94a3b8",
+                        border:`1.5px solid ${filled?"#f97316":"#cbd5e1"}`}}>
+                        {filled?s:"·"}
+                      </div>
+                      <span style={{fontSize:"9px",color:"#94a3b8",fontWeight:600}}>{idx+1}</span>
+                    </div>
+                  );
                 })}
               </div>
             </div>
