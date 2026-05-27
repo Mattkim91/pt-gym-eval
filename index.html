@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.71</title>
+  <title>환자 평가 관리 v6.75</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -375,8 +375,9 @@ const DEFAULT_TEMPLATES = {
       { id:"steps2", label:"스텝 수 - 시행 2", type:"number", placeholder:"", inputMode:"numeric" },
       { id:"trial3", label:"시행 3 (초)", type:"number", placeholder:"" },
       { id:"steps3", label:"스텝 수 - 시행 3", type:"number", placeholder:"", inputMode:"numeric" },
-      { id:"avg", label:"평균 (초)", type:"number_auto", placeholder:"자동계산" },
-      { id:"speed", label:"속도 (m/s)", type:"number_auto", placeholder:"자동계산" },
+      { id:"avg", label:"평균 시간 (초)", type:"number_auto", placeholder:"자동계산" },
+      { id:"speed", label:"평균속도 (m/s)", type:"number_auto", placeholder:"자동계산" },
+      { id:"steps_avg", label:"평균 스텝 수", type:"number_auto", placeholder:"자동계산" },
       { id:"assistive", label:"보조도구", type:"text", placeholder:"예: 지팡이, 워커, 없음" },
       { id:"orthosis", label:"Orthosis", type:"text", placeholder:"예: AFO, KAFO, 없음" },
       { id:"assist_level", label:"Assist Level", type:"text", placeholder:"예: Independent, Min A, Mod A" },
@@ -456,7 +457,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.71";
+const APP_VERSION = "v6.75";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -688,13 +689,13 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
     persist({...db,patients:[...db.patients,{id,name,createdAt:Date.now()}]});
     setNewId("");setNewName("");setAddMode(false);setIdErrMsg("");
   };
-  const quickAdd=()=>{
+  const quickAdd=(evalKey=null)=>{
     const id=genId();
     const name=genName();
     const newPt={id,name,createdAt:Date.now()};
     const newDb={...db,patients:[...db.patients,newPt]};
     persist(newDb);
-    onSelect(newPt);
+    onSelect(newPt,evalKey);
   };
   const delPt=async(id)=>{
     const pt=db.patients.find(p=>p.id===id);
@@ -850,13 +851,28 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
       <div style={{display:"flex",alignItems:"center",gap:"7px",background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 10px"}}>
         <IcoSearch/><input style={{border:"none",outline:"none",fontSize:"14px",color:"#334155",width:"100%",background:"transparent"}} placeholder="ID 또는 이름 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
-      <div style={{display:"flex",gap:"8px"}}>
-        <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"5px",background:"#475569",color:"#fff",border:"none",borderRadius:"11px",padding:"13px 8px",fontSize:"12px",fontWeight:600,cursor:"pointer",lineHeight:1.4,textAlign:"center",boxShadow:"0 2px 8px rgba(71,85,105,0.18)"}} onClick={()=>{setAddMode(true);setEditPt(null);}}>
-          <IcoPlus/>신환 정보 입력 후 평가
-        </button>
-        <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"5px",background:"#2563eb",color:"#fff",border:"none",borderRadius:"11px",padding:"13px 8px",fontSize:"12px",fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(37,99,235,0.18)",lineHeight:1.4,textAlign:"center"}} onClick={quickAdd}>
-          <IcoPlus/>빠른 신환 생성 후 평가
-        </button>
+      <div style={{display:"flex",flexDirection:"column",gap:"7px"}}>
+        {/* 빠른 평가 버튼 - 좌우 배치 */}
+        <div style={{display:"flex",gap:"7px"}}>
+          <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"4px",background:"linear-gradient(135deg,#7c3aed,#6d28d9)",color:"#fff",border:"none",borderRadius:"13px",padding:"14px 8px",fontSize:"13px",fontWeight:800,cursor:"pointer",boxShadow:"0 4px 14px rgba(109,40,217,0.35)"}}
+            onClick={()=>quickAdd("BBS")}>
+            <span style={{fontSize:"18px"}}>⚡</span>
+            <span>빠른 BBS</span>
+          </button>
+          <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"4px",background:"linear-gradient(135deg,#f97316,#ef4444)",color:"#fff",border:"none",borderRadius:"13px",padding:"14px 8px",fontSize:"13px",fontWeight:800,cursor:"pointer",boxShadow:"0 4px 14px rgba(239,68,68,0.35)"}}
+            onClick={()=>quickAdd("10mWT")}>
+            <span style={{fontSize:"18px"}}>⚡</span>
+            <span>빠른 10mWT</span>
+          </button>
+        </div>
+        <div style={{display:"flex",gap:"7px"}}>
+          <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"5px",background:"#475569",color:"#fff",border:"none",borderRadius:"11px",padding:"11px 8px",fontSize:"11px",fontWeight:600,cursor:"pointer",lineHeight:1.4,textAlign:"center",boxShadow:"0 2px 8px rgba(71,85,105,0.18)"}} onClick={()=>{setAddMode(true);setEditPt(null);}}>
+            <IcoPlus/>신환 정보 입력 후 평가
+          </button>
+          <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"5px",background:"#2563eb",color:"#fff",border:"none",borderRadius:"11px",padding:"11px 8px",fontSize:"11px",fontWeight:600,cursor:"pointer",boxShadow:"0 2px 8px rgba(37,99,235,0.18)",lineHeight:1.4,textAlign:"center"}} onClick={()=>quickAdd(null)}>
+            <IcoPlus/>빠른 신환 생성 후 평가
+          </button>
+        </div>
       </div>
       <input ref={fileInputRef} type="file" accept="*/*" style={{display:"none"}} onChange={importBackup}/>
       {backupMsg&&<div style={{fontSize:"12px",color:"#475569",textAlign:"center",padding:"4px 0"}}>{backupMsg}</div>}
@@ -1519,18 +1535,31 @@ function RecordSummary({evalKey,data,col,templates}){
         if(field.type==="fga_full"){
           const scores=val||[];
           const total=data.fga_total??scores.reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+          const rows=[[0,1,2,3,4],[5,6,7,8,9]];
           return(
-            <div key={field.id}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",background:"#f0fdf4",borderRadius:"8px",border:"1.5px solid #16a34a",marginBottom:"8px"}}>
-                <span style={{fontSize:"12px",fontWeight:700,color:"#14532d"}}>FGA 총점</span>
-                <span style={{fontSize:"20px",fontWeight:800,color:"#16a34a"}}>{total}<span style={{fontSize:"12px",color:"#94a3b8",fontWeight:400}}> / 30</span></span>
+            <div key={field.id} style={{background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:"12px",padding:"12px 14px"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"10px"}}>
+                <span style={{fontSize:"12px",fontWeight:800,color:"#14532d"}}>📋 FGA 답안 요약</span>
+                <span style={{fontSize:"16px",fontWeight:800,color:"#16a34a"}}>총 {total}점 <span style={{fontSize:"11px",color:"#94a3b8",fontWeight:400}}>/ 30</span></span>
               </div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
-                {FGA_ITEMS.map((item,ri)=>{
-                  const s=scores[ri];
-                  return <span key={ri} style={{fontSize:"11px",padding:"2px 8px",borderRadius:"20px",background:s!==null&&s!==undefined?"#f0fdf4":"#f1f5f9",color:s!==null&&s!==undefined?"#16a34a":"#94a3b8",fontWeight:600,border:"1px solid "+(s!==null&&s!==undefined?"#bbf7d0":"#e2e8f0")}}>{ri+1}: {s!==null&&s!==undefined?s+"점":"—"}</span>;
-                })}
-              </div>
+              {rows.map((row,ri)=>(
+                <div key={ri} style={{display:"flex",gap:"6px",marginBottom:ri<1?"8px":"0"}}>
+                  {row.map(idx=>{
+                    const s=scores[idx];
+                    const filled=s!==null&&s!==undefined;
+                    return(
+                      <div key={idx} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"2px"}}>
+                        <div style={{width:"32px",height:"32px",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:"14px",
+                          background:filled?"#16a34a":"#fff",color:filled?"#fff":"#94a3b8",
+                          border:`1.5px solid ${filled?"#16a34a":"#cbd5e1"}`}}>
+                          {filled?s:"·"}
+                        </div>
+                        <span style={{fontSize:"9px",color:"#94a3b8",fontWeight:600}}>{idx+1}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           );
         }
@@ -1681,7 +1710,7 @@ function RecordSummary({evalKey,data,col,templates}){
   );
 }
 
-function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useConfirm,showToast}){
+function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,directNavRef,useConfirm,showToast}){
   const [tab,setTab]=useState("item");   // "item" | "date"
   const [rv,setRv]=useState("eval-select");
   const [ek,setEk]=useState(null);
@@ -1698,6 +1727,9 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,useCon
     if(opts.tab!==undefined) setTab(opts.tab);
     setRv(nextRv);
   };
+
+  // 외부(App)에서 직접 navTo 호출용 ref
+  useEffect(()=>{ if(directNavRef) directNavRef.current=navTo; });
 
 
   // goBack: useEffect로 매 렌더 후 즉시 동기화 (가장 안정적)
@@ -2140,6 +2172,7 @@ function App(){
     }catch{return "list";}
   });
   const contentGoBackRef=React.useRef(null);
+  const contentDirectNavRef=React.useRef(null);
   const mobileViewRef=React.useRef("list");
   const setMobileViewSync=(v)=>{mobileViewRef.current=v;setMobileView(v);};
   const persist=nd=>{setDb(nd);saveData(nd);};
@@ -2156,12 +2189,19 @@ function App(){
   });
   const useConfirmRef=React.useRef(useConfirm);
   useEffect(()=>{ useConfirmRef.current=useConfirm; });
-  const selectPatient=p=>{
+  const selectPatient=(p,directEvalKey=null)=>{
     setPatient(p);
     const view=isTablet?"list":"content";
     if(!isTablet) setMobileViewSync("content");
-    // 마지막 선택 환자 저장
     try{ sessionStorage.setItem("pt_last_state",JSON.stringify({patientId:p.id,view})); }catch{}
+    // 특정 평가 폼으로 직행
+    if(directEvalKey){
+      setTimeout(()=>{
+        if(contentDirectNavRef.current){
+          contentDirectNavRef.current("eval-form",{ek:directEvalKey,editRec:null});
+        }
+      },80);
+    }
   };
   useEffect(()=>{
     // guard 2개 전략: 갤럭시 엣지 스와이프는 popstate를 연속 2회 발생시킴
@@ -2261,7 +2301,7 @@ function App(){
           <PatientListPanel db={db} persist={persist} selectedPatient={patient} onSelect={selectPatient} useConfirm={useConfirm}/>
         </div>
         <div className="panel-right" style={!isTablet&&mobileView==="list"?{display:"none"}:{display:"block",flex:1,overflow:"hidden"}}>
-          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={()=>{ setMobileViewSync("list"); try{sessionStorage.setItem("pt_last_state",JSON.stringify({patientId:patient?.id,view:"list"}));}catch{} }} goBackRef={contentGoBackRef} useConfirm={useConfirm} showToast={showToast}/>
+          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={()=>{ setMobileViewSync("list"); try{sessionStorage.setItem("pt_last_state",JSON.stringify({patientId:patient?.id,view:"list"}));}catch{} }} goBackRef={contentGoBackRef} directNavRef={contentDirectNavRef} useConfirm={useConfirm} showToast={showToast}/>
         </div>
       </div>
     </div>
@@ -2459,12 +2499,14 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
       if(vals.length>0){
         const avg=(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2);
         const speed=(10/parseFloat(avg)).toFixed(3);
-        setFd(prev=>({...prev,avg,speed}));
+        const svals=["steps1","steps2","steps3"].map(k=>parseFloat(fd[k])).filter(v=>!isNaN(v));
+        const steps_avg=svals.length>0?(svals.reduce((a,b)=>a+b,0)/svals.length).toFixed(1):"";
+        setFd(prev=>({...prev,avg,speed,steps_avg}));
       } else {
-        setFd(prev=>({...prev,avg:"",speed:""}));
+        setFd(prev=>({...prev,avg:"",speed:"",steps_avg:""}));
       }
     }
-  },[fd.trial1,fd.trial2,fd.trial3]);
+  },[fd.trial1,fd.trial2,fd.trial3,fd.steps1,fd.steps2,fd.steps3]);
 
   // 총점 실시간 계산 → 서브헤더 배지
   useEffect(()=>{
@@ -2492,7 +2534,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
   },[fd]);
 
   const isTestFailure = fd["test_failure"] === "Test failure";
-  const FAILURE_DISABLED = ["speed_type","trial1","trial2","trial3","avg","speed","assistive","orthosis","assist_level","steps1","steps2","steps3"];
+  const FAILURE_DISABLED = ["speed_type","trial1","trial2","trial3","avg","speed","steps_avg","assistive","orthosis","assist_level","steps1","steps2","steps3"];
 
   const handleSave=()=>{
     const final={...fd};
@@ -3117,7 +3159,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
         }
 
                 // steps 필드는 trial 블록에서 처리하므로 여기서 스킵
-        if(["steps1","steps2","steps3"].includes(field.id)) return null;
+        if(["steps1","steps2","steps3","steps_avg"].includes(field.id)) return null;
 
         if(field.type==="date"){
           const isBBS = template?.fields?.some(f=>f.type==="bbs_full");
