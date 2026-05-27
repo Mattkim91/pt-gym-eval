@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.76</title>
+  <title>환자 평가 관리 v6.77</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -457,7 +457,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.76";
+const APP_VERSION = "v6.77";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2522,14 +2522,14 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
   useEffect(()=>{
     if(template?.fields?.find(f=>f.id==="avg"&&f.type==="number_auto")){
       const vals=["trial1","trial2","trial3"].map(k=>parseFloat(fd[k])).filter(v=>!isNaN(v));
+      const svals=["steps1","steps2","steps3"].map(k=>parseFloat(fd[k])).filter(v=>!isNaN(v));
+      const steps_avg=svals.length>0?(svals.reduce((a,b)=>a+b,0)/svals.length).toFixed(1):"";
       if(vals.length>0){
         const avg=(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2);
         const speed=(10/parseFloat(avg)).toFixed(3);
-        const svals=["steps1","steps2","steps3"].map(k=>parseFloat(fd[k])).filter(v=>!isNaN(v));
-        const steps_avg=svals.length>0?(svals.reduce((a,b)=>a+b,0)/svals.length).toFixed(1):"";
         setFd(prev=>({...prev,avg,speed,steps_avg}));
       } else {
-        setFd(prev=>({...prev,avg:"",speed:"",steps_avg:""}));
+        setFd(prev=>({...prev,avg:"",speed:"",steps_avg}));
       }
     }
   },[fd.trial1,fd.trial2,fd.trial3,fd.steps1,fd.steps2,fd.steps3]);
