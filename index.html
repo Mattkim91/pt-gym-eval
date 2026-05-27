@@ -33,7 +33,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v6.75</title>
+  <title>환자 평가 관리 v6.76</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -457,7 +457,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v6.75";
+const APP_VERSION = "v6.76";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1769,7 +1769,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
     if(rid!=null)rec[pid][k]=rec[pid][k].map(r=>r.id===rid?{...r,data,savedAt:Date.now()}:r);
     else rec[pid][k]=[...rec[pid][k],{id:Date.now(),data,savedAt:Date.now()}];
     persist({...db,records:rec});
-    if(showToast) showToast("✅ 저장됐습니다");
+    if(showToast){ const nextMap={"BBS":"10mWT","10mWT":"BBS"}; showToast("✅ 저장됐습니다",5000,nextMap[ek]||null); }
   };
   const delRec=async(k,rid,date)=>{
     const ok=await useConfirm(`"${date||"미기재"} ${k}" 항목을 삭제하시겠습니까?`);
@@ -1942,8 +1942,13 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
               setEditRec(null);
               if(tab==="date"){setRv("date-view");}
               else{setRv("eval-history");}
-              if(isAuto) showToast("입력 중이던 내용이 자동저장됐습니다",5000);
-              else if(showToast) showToast("✅ 저장됐습니다");
+              if(isAuto){
+                showToast("입력 중이던 내용이 자동저장됐습니다",5000);
+              } else if(showToast){
+                const nextMap={"BBS":"10mWT","10mWT":"BBS"};
+                const nextEval=nextMap[ek]||null;
+                showToast("✅ 저장됐습니다",5000,nextEval);
+              }
             }}
             onCancel={()=>{
               evalFormDirtyRef.current=false;
@@ -2125,11 +2130,24 @@ function MmtInput({value, onChange}){
 }
 
 
-function Toast({msg}){
-  if(!msg) return null;
+function Toast({data,onAction}){
+  if(!data||!data.msg) return null;
+  const hasAction=!!(data.nextEval&&onAction);
   return(
-    <div style={{position:"fixed",bottom:"90px",left:"50%",transform:"translateX(-50%)",zIndex:9998,background:"#1e293b",color:"#fff",borderRadius:"12px",padding:"10px 20px",fontSize:"13px",fontWeight:600,boxShadow:"0 4px 16px rgba(0,0,0,0.2)",whiteSpace:"nowrap",pointerEvents:"none"}}>
-      {msg}
+    <div style={{position:"fixed",bottom:"90px",left:"50%",transform:"translateX(-50%)",zIndex:9998,
+      background:"#1e293b",color:"#fff",borderRadius:"14px",
+      padding:hasAction?"10px 10px 10px 16px":"10px 20px",
+      fontSize:"13px",fontWeight:600,boxShadow:"0 4px 20px rgba(0,0,0,0.25)",
+      display:"flex",alignItems:"center",gap:"10px",
+      pointerEvents:hasAction?"auto":"none",whiteSpace:"nowrap"}}>
+      <span>{data.msg}</span>
+      {hasAction&&(
+        <button onClick={onAction}
+          style={{flexShrink:0,background:"#f97316",color:"#fff",border:"none",borderRadius:"9px",
+            padding:"6px 12px",fontSize:"12px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+          {data.nextEval} 이어서 →
+        </button>
+      )}
     </div>
   );
 }
@@ -2177,12 +2195,20 @@ function App(){
   const setMobileViewSync=(v)=>{mobileViewRef.current=v;setMobileView(v);};
   const persist=nd=>{setDb(nd);saveData(nd);};
   const [confirmState,setConfirmState]=useState({msg:null,onYes:null});
-  const [toastMsg,setToastMsg]=useState("");
+  const [toastData,setToastData]=useState({msg:"",nextEval:null});
   const toastRef=React.useRef(null);
-  const showToast=(msg,duration=2000)=>{
-    setToastMsg(msg);
+  const showToast=(msg,duration=2000,nextEval=null)=>{
+    setToastData({msg,nextEval});
     if(toastRef.current) clearTimeout(toastRef.current);
-    toastRef.current=setTimeout(()=>setToastMsg(""),duration);
+    toastRef.current=setTimeout(()=>setToastData({msg:"",nextEval:null}),duration);
+  };
+  const handleToastAction=()=>{
+    if(!toastData.nextEval) return;
+    setToastData({msg:"",nextEval:null});
+    if(toastRef.current) clearTimeout(toastRef.current);
+    if(contentDirectNavRef.current){
+      contentDirectNavRef.current("eval-form",{ek:toastData.nextEval,editRec:null});
+    }
   };
   const useConfirm=(msg)=>new Promise(res=>{
     setConfirmState({msg,onYes:()=>{setConfirmState({msg:null,onYes:null});res(true);},onNo:()=>{setConfirmState({msg:null,onYes:null});res(false);}});
@@ -2263,7 +2289,7 @@ function App(){
   return(
     <div className="layout-shell">
       <ConfirmDialog msg={confirmState.msg} onYes={confirmState.onYes} onNo={confirmState.onNo}/>
-      <Toast msg={toastMsg}/>
+      <Toast data={toastData} onAction={handleToastAction}/>
 
       <div className="topbar">
         <div style={{display:"flex",alignItems:"center",gap:"6px",minWidth:0,flex:1}}>
