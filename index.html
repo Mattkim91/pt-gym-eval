@@ -489,16 +489,13 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-// 이름 마스킹: 김형민 → 김O민, 이O → 이O, 홍길동 → 홍OO
+// 이름 마스킹: 두 번째 글자만 O로 표시 (김형민→김O민, 신환15→신O환15, 이O→이O)
 const maskName=(name)=>{
-  if(!name||name.length===0) return name;
-  if(name.length===1) return name;
-  if(name.length===2) return name[0]+"O";
-  // 3글자 이상: 첫글자 + 중간 전부 O + 마지막글자
-  return name[0]+"O".repeat(name.length-2)+name[name.length-1];
+  if(!name||name.length<=1) return name;
+  return name[0]+"O"+name.slice(2);
 };
 
-const APP_VERSION = "v7.1";
+const APP_VERSION = "v7.2";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
