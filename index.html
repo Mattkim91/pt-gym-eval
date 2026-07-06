@@ -489,13 +489,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-// 이름 마스킹: 두 번째 글자만 O로 표시 (김형민→김O민, 신환15→신O환15, 이O→이O)
-const maskName=(name)=>{
-  if(!name||name.length<=1) return name;
-  return name[0]+"O"+name.slice(2);
-};
-
-const APP_VERSION = "v7.2";
+const APP_VERSION = "v7.6";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -592,26 +586,13 @@ const S={
 
 const IcoPencil=()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
 
-function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMode}){
+function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
   const [search,setSearch]=useState("");
-  const [addMode,setAddMode]=useState(false);
-  const [newId,setNewId]=useState("");
-  const [newName,setNewName]=useState("");
-  const [editPt,setEditPt]=useState(null);
-  const [editId,setEditId]=useState("");
-  const [editName,setEditName]=useState("");
   const [backupMsg,setBackupMsg]=useState("");
-  const [sortKey,setSortKey]=useState("date");   // "date"|"id"|"name"
-  const [sortAsc,setSortAsc]=useState(false);    // true=오름차순(오래된순), false=내림차순(최신순)
+  const [sortKey,setSortKey]=useState("date");
+  const [sortAsc,setSortAsc]=useState(false);
   const fileInputRef=React.useRef(null);
   const scrollRef=React.useRef(null);
-  const [idErrMsg,setIdErrMsg]=useState("");
-  const idErrTimer=React.useRef(null);
-  const showIdErr=(msg)=>{
-    setIdErrMsg(msg);
-    if(idErrTimer.current) clearTimeout(idErrTimer.current);
-    idErrTimer.current=setTimeout(()=>setIdErrMsg(""),2500);
-  };
   useEffect(()=>{
     
   },[]);
@@ -716,16 +697,12 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMo
     return "#"+n;
   };
   const genName=()=>{
-    let n=1;
-    while(db.patients.find(p=>p.name==="신환"+n)) n++;
-    return "신환"+n;
-  };
-  const addPt=()=>{
-    const id=(newId.trim()||genId());
-    const name=(newName.trim()||genName());
-    if(db.patients.find(p=>p.id===id)){showIdErr("이미 존재하는 ID입니다.");return;}
-    persist({...db,patients:[...db.patients,{id,name,createdAt:Date.now()}]});
-    setNewId("");setNewName("");setAddMode(false);setIdErrMsg("");
+    const now=new Date();
+    const mm=String(now.getMonth()+1).padStart(2,"0");
+    const dd=String(now.getDate()).padStart(2,"0");
+    const hh=String(now.getHours()).padStart(2,"0");
+    const mi=String(now.getMinutes()).padStart(2,"0");
+    return `신환${mm}/${dd}-${hh}:${mi}`;
   };
   const quickAdd=(evalKey=null)=>{
     const id=genId();
@@ -741,28 +718,6 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMo
     if(!ok) return;
     const rec={...db.records};delete rec[id];
     persist({...db,patients:db.patients.filter(p=>p.id!==id),records:rec});
-  };
-  const startEdit=(p,e)=>{
-    e.stopPropagation();
-    setEditPt(p);
-    setEditId(p.id);
-    setEditName(p.name);
-    setAddMode(false);
-  };
-  const saveEdit=()=>{
-    if(!editId.trim()||!editName.trim()) return;
-    const oldId=editPt.id;
-    const newIdVal=editId.trim();
-    if(newIdVal!==oldId&&db.patients.find(p=>p.id===newIdVal)){showIdErr("이미 존재하는 ID입니다.");return;}
-    // ID가 바뀌면 records 키도 이전
-    const newPatients=db.patients.map(p=>p.id===oldId?{id:newIdVal,name:editName.trim()}:p);
-    const newRecords={...db.records};
-    if(newIdVal!==oldId){
-      newRecords[newIdVal]=newRecords[oldId]||{};
-      delete newRecords[oldId];
-    }
-    persist({...db,patients:newPatients,records:newRecords});
-    setEditPt(null);
   };
 
   const getLatestSavedAt=(pid)=>{
@@ -789,7 +744,6 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMo
       else if(sortKey==="name") cmp=a.name.localeCompare(b.name,"ko");
       return sortAsc?cmp:-cmp;
     });
-  const inputStyle={border:"1.5px solid #e2e8f0",borderRadius:"7px",padding:"8px 10px",outline:"none",color:"#1e293b",fontSize:"15px",width:"100%"};
 
   return(
     <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
@@ -829,13 +783,12 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMo
           const total=EVAL_KEYS.reduce((s,k)=>s+(db.records[p.id]?.[k]?.length||0),0);
           const latestSavedAt=getLatestSavedAt(p.id);
           const isSel=selectedPatient?.id===p.id;
-          const isEditing=editPt?.id===p.id;
-          return(
-            <div key={p.id} className="pt-row" style={{padding:"11px 12px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",justifyContent:"space-between",background:isEditing?"#fffbeb":isSel?"#eff6ff":"white"}} onClick={()=>onSelect(p)}>
+                    return(
+            <div key={p.id} className="pt-row" style={{padding:"11px 12px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",justifyContent:"space-between",background:isSel?"#eff6ff":"white"}} onClick={()=>onSelect(p)}>
               <div style={{minWidth:0,flex:1}}>
                 <div style={{display:"flex",alignItems:"baseline",gap:"8px",flexWrap:"wrap"}}>
                   <span style={{fontFamily:"monospace",color:"#2563eb",fontSize:"12px"}}>{p.id}</span>
-                  <span style={{fontWeight:600,fontSize:"14px",color:"#1e293b"}}>{maskMode?maskName(p.name):p.name}</span>
+                  <span style={{fontWeight:600,fontSize:"14px",color:"#1e293b"}}>{p.name}</span>
                   <span style={{fontSize:"11px",color:"#94a3b8"}}>{total}건</span>
                 </div>
                 <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"2px",display:"flex",flexDirection:"column",gap:"1px"}}>
@@ -844,8 +797,7 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMo
                 </div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:"6px",flexShrink:0}}>
-                {isSel&&!isEditing&&<div style={{display:"flex",alignItems:"center",gap:"4px",color:"#2563eb",fontSize:"11px",fontWeight:600}}><div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#2563eb",flexShrink:0}}/> 최근 열람</div>}
-                <button style={{background:"none",border:"1px solid #fcd34d",borderRadius:"6px",padding:"4px 7px",cursor:"pointer",color:"#b45309",display:"inline-flex",alignItems:"center"}} onClick={e=>startEdit(p,e)}><IcoPencil/></button>
+                {isSel&&<div style={{display:"flex",alignItems:"center",gap:"4px",color:"#2563eb",fontSize:"11px",fontWeight:600}}><div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#2563eb",flexShrink:0}}/> 최근 열람</div>}
                 <button style={S.delBtn} onClick={e=>{e.stopPropagation();delPt(p.id);}}><IcoTrash/></button>
               </div>
             </div>
@@ -858,58 +810,33 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMo
 
     {/* 하단 고정 영역: 신규등록폼 + 검색 + 신환 버튼 */}
     <div style={{flexShrink:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",padding:"10px 14px",display:"flex",flexDirection:"column",gap:"8px",boxShadow:"0 -2px 10px rgba(0,0,0,0.06)"}}>
-      {editPt&&(
-        <div style={{display:"flex",flexDirection:"column",gap:"7px",background:"#fff",border:"1.5px solid #f59e0b",borderRadius:"10px",padding:"12px"}}>
-          <div style={{fontSize:"11px",fontWeight:700,color:"#b45309",marginBottom:"2px"}}>환자 정보 수정</div>
-          <div style={{position:"relative"}}>
-            <input style={{...inputStyle,borderColor:idErrMsg?"#ef4444":"#fcd34d"}} inputMode="numeric" placeholder="환자 ID" value={editId} onChange={e=>{setEditId(e.target.value);setIdErrMsg("");}} onKeyDown={e=>e.key==="Enter"&&saveEdit()}/>
-            {idErrMsg&&<div style={{position:"absolute",top:"50%",right:"10px",transform:"translateY(-50%)",fontSize:"11px",color:"#ef4444",fontWeight:700,pointerEvents:"none",background:"#fff",paddingLeft:"4px"}}>{idErrMsg}</div>}
-          </div>
-          <input style={{...inputStyle,borderColor:"#fcd34d"}} placeholder="이름" value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()}/>
-          <div style={{display:"flex",gap:"7px"}}>
-            <button style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",cursor:"pointer"}} onClick={()=>setEditPt(null)}>취소</button>
-            <button style={{flex:1,background:"#f59e0b",color:"#fff",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",fontWeight:600,cursor:"pointer"}} onClick={saveEdit}>저장</button>
-          </div>
-        </div>
-      )}
-      {addMode&&(
-        <div style={{display:"flex",flexDirection:"column",gap:"7px",background:"#fff",border:"1.5px solid #2563eb",borderRadius:"10px",padding:"12px"}}>
-          <div style={{fontSize:"11px",fontWeight:700,color:"#2563eb",marginBottom:"2px"}}>새 환자 등록</div>
-          <div style={{position:"relative"}}>
-            <input style={{...inputStyle,borderColor:idErrMsg?"#ef4444":undefined}} inputMode="numeric" placeholder="환자 ID (선택사항)" value={newId} onChange={e=>{setNewId(e.target.value);setIdErrMsg("");}} onKeyDown={e=>e.key==="Enter"&&addPt()}/>
-            {idErrMsg&&<div style={{position:"absolute",top:"50%",right:"10px",transform:"translateY(-50%)",fontSize:"11px",color:"#ef4444",fontWeight:700,pointerEvents:"none",background:"#fff",paddingLeft:"4px"}}>{idErrMsg}</div>}
-          </div>
-          <input style={inputStyle} placeholder="이름 (선택사항)" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPt()}/>
-          <div style={{display:"flex",gap:"7px"}}>
-            <button style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",cursor:"pointer"}} onClick={()=>{setAddMode(false);setNewId("");setNewName("");}}>취소</button>
-            <button style={{flex:1,background:"#2563eb",color:"#fff",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",fontWeight:600,cursor:"pointer"}} onClick={addPt}>저장</button>
-          </div>
-        </div>
-      )}
+
       <div style={{display:"flex",alignItems:"center",gap:"7px",background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 10px"}}>
         <IcoSearch/><input style={{border:"none",outline:"none",fontSize:"14px",color:"#334155",width:"100%",background:"transparent"}} placeholder="ID 또는 이름 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:"7px"}}>
-        {/* 빠른 평가 버튼 - 좌우 배치 */}
+        {/* 빠른 평가 버튼 */}
         <div style={{display:"flex",gap:"7px"}}>
           <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"4px",background:"linear-gradient(135deg,#7c3aed,#6d28d9)",color:"#fff",border:"none",borderRadius:"13px",padding:"14px 8px",fontSize:"13px",fontWeight:700,cursor:"pointer",boxShadow:"0 4px 14px rgba(109,40,217,0.35)",minHeight:"74px"}}
             onClick={()=>quickAdd("BBS")}>
+            <span style={{fontSize:"18px"}}>⚡</span>
             <span>빠른 BBS</span>
           </button>
           <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"4px",background:"linear-gradient(135deg,#f97316,#ef4444)",color:"#fff",border:"none",borderRadius:"13px",padding:"14px 8px",fontSize:"13px",fontWeight:700,cursor:"pointer",boxShadow:"0 4px 14px rgba(239,68,68,0.35)",minHeight:"74px"}}
             onClick={()=>quickAdd("10mWT")}>
+            <span style={{fontSize:"18px"}}>⚡</span>
             <span>빠른 10mWT</span>
           </button>
+          <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"4px",background:"#2563eb",color:"#fff",border:"none",borderRadius:"13px",padding:"14px 8px",fontSize:"13px",fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(37,99,235,0.18)",minHeight:"74px"}}
+            onClick={()=>quickAdd(null)}>
+            <span style={{fontSize:"18px"}}>📋</span>
+            <span>새 기록 시작</span>
+          </button>
         </div>
-        <div style={{display:"flex",gap:"7px"}}>
-          <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"4px",background:"#475569",color:"#fff",border:"none",borderRadius:"13px",padding:"14px 8px",fontSize:"13px",fontWeight:700,cursor:"pointer",lineHeight:1.4,textAlign:"center",boxShadow:"0 2px 8px rgba(71,85,105,0.18)",minHeight:"74px"}} onClick={()=>{setAddMode(true);setEditPt(null);}}>
-            <span style={{fontSize:"18px"}}>✏️</span>
-            <span>ID/이름 직접 등록</span>
-          </button>
-          <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"4px",background:"#2563eb",color:"#fff",border:"none",borderRadius:"13px",padding:"14px 8px",fontSize:"13px",fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(37,99,235,0.18)",lineHeight:1.4,textAlign:"center",minHeight:"74px"}} onClick={()=>quickAdd(null)}>
-            <span style={{fontSize:"18px"}}>⚡</span>
-            <span>자동 등록 후 시작</span>
-          </button>
+        {/* 경고 문구 */}
+        <div style={{display:"flex",alignItems:"center",gap:"6px",padding:"7px 10px",background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"8px"}}>
+          <span style={{fontSize:"13px",flexShrink:0}}>🔒</span>
+          <span style={{fontSize:"10px",color:"#991b1b",lineHeight:1.4}}>환자 식별정보(이름·등록번호 등)를 직접 입력하지 마세요. 기록은 생성 시각으로만 구분됩니다.</span>
         </div>
       </div>
       <input ref={fileInputRef} type="file" accept="*/*" style={{display:"none"}} onChange={importBackup}/>
@@ -920,8 +847,8 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMo
 }
 
 // ── 날짜별 한눈에 보기 ───────────────────────────────────────────
-function buildPrintHtml(patient, date, items, templates, maskMode){
-  const displayName = maskMode ? maskName(patient.name) : patient.name;
+function buildPrintHtml(patient, date, items, templates){
+  const displayName = patient.name;
   const colMap=EVAL_COLORS;
   let body="";
   items.forEach(({key,rec})=>{
@@ -1060,7 +987,7 @@ function buildPrintHtml(patient, date, items, templates, maskMode){
   </body></html>`;
 }
 
-function DateSummaryView({db,persist,patient,templates,onEditForm,maskMode}){
+function DateSummaryView({db,persist,patient,templates,onEditForm}){
   const pid=patient.id;
   const allRecs=db.records[pid]||{};
 
@@ -1074,10 +1001,10 @@ function DateSummaryView({db,persist,patient,templates,onEditForm,maskMode}){
   });
   const dates=Object.keys(dateMap).sort((a,b)=>b.localeCompare(a));
   const [openDate,setOpenDate]=useState(dates[0]||null);
-  const displayName=maskMode?maskName(patient.name):patient.name;
+  const displayName=patient.name;
 
   const shareDate=async(d,items)=>{
-    const html=buildPrintHtml(patient,d,items,templates,maskMode);
+    const html=buildPrintHtml(patient,d,items,templates);
     const blob=new Blob([html],{type:"text/html"});
     const fname=`${displayName}_${d}_평가기록.html`;
     const file=new File([blob],fname,{type:"text/html"});
@@ -1750,7 +1677,7 @@ function RecordSummary({evalKey,data,col,templates}){
   );
 }
 
-function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,directNavRef,useConfirm,showToast,maskMode}){
+function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,directNavRef,useConfirm,showToast}){
   const [tab,setTab]=useState("item");   // "item" | "date"
   const [rv,setRv]=useState("eval-select");
   const [ek,setEk]=useState(null);
@@ -1819,7 +1746,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
   const crumb=()=>{
     if(!patient) return null;
     const col=ek?EVAL_COLORS[ek]:null;
-    const base=<span style={{fontWeight:700,color:"#1e293b"}}>{maskMode?maskName(patient.name):patient.name}</span>;
+    const base=<span style={{fontWeight:700,color:"#1e293b"}}>{patient.name}</span>;
     if(ek&&rv==="eval-form") return(
       <span style={{display:"flex",alignItems:"center",gap:"5px",flexWrap:"nowrap"}}>
         {base}
@@ -1921,7 +1848,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
         {/* 날짜별 탭 */}
         {rv==="eval-select"&&tab==="date"&&(
           <><p style={S.secLabel}>날짜별 보기</p>
-          <div style={{paddingBottom:"120px"}}><DateSummaryView db={db} persist={persist} patient={patient} templates={db.templates} onEditForm={handleDateEditForm} maskMode={maskMode}/></div>
+          <div style={{paddingBottom:"120px"}}><DateSummaryView db={db} persist={persist} patient={patient} templates={db.templates} onEditForm={handleDateEditForm}/></div>
           {/* 항목별 FAB */}
           <button onClick={()=>setTab("item")}
             style={{right:"12px",position:"fixed",bottom:"24px",zIndex:500,display:"flex",alignItems:"center",gap:"6px",borderRadius:"24px",padding:"10px 18px",fontSize:"13px",fontWeight:600,cursor:"pointer",boxShadow:"0 2px 10px rgba(0,0,0,0.12)",WebkitTapHighlightColor:"transparent",border:"1.5px solid transparent",background:"#2563eb",color:"#fff"}}>
@@ -2214,7 +2141,6 @@ function ConfirmDialog({msg, onYes, onNo}){
 function App(){
   const [db,setDb]=useState(()=>{autoBackupOnOpen();return loadData();});
   const isTablet=useIsTablet();
-  const [maskMode,setMaskMode]=useState(()=>localStorage.getItem("pt_mask_mode")==="1"||localStorage.getItem("pt_mask_mode")===null);
   // 마지막 화면 복원: sessionStorage에서 환자 ID + mobileView 복원
   const [patient,setPatient]=useState(()=>{
     try{
@@ -2239,7 +2165,6 @@ function App(){
   const mobileViewRef=React.useRef("list");
   const setMobileViewSync=(v)=>{mobileViewRef.current=v;setMobileView(v);};
   const persist=nd=>{setDb(nd);saveData(nd);};
-  const toggleMask=()=>setMaskMode(v=>{const next=!v;localStorage.setItem("pt_mask_mode",next?"1":"0");return next;});
   const [confirmState,setConfirmState]=useState({msg:null,onYes:null});
   const [toastData,setToastData]=useState({msg:"",nextEval:null});
   const toastRef=React.useRef(null);
@@ -2343,7 +2268,7 @@ function App(){
             <button onClick={()=>setMobileViewSync("list")} style={{background:"none",border:"none",padding:"6px 6px 6px 0",color:"#475569",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}><IcoBack/></button>
           )}
           {!isTablet&&mobileView==="content"&&patient?(
-            <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{maskMode?maskName(patient.name):patient.name}</span>
+            <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{patient.name}</span>
           ):(
             <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b"}}>환자 평가 관리 <span style={{fontSize:"12px",fontWeight:500,color:"#94a3b8"}}>{APP_VERSION}</span></span>
           )}
@@ -2353,9 +2278,6 @@ function App(){
             <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
               <button onClick={()=>document.dispatchEvent(new CustomEvent("backup-export"))} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#2563eb",cursor:"pointer",fontWeight:600}}>⬇ 백업</button>
               <button onClick={()=>document.dispatchEvent(new CustomEvent("backup-import"))} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#16a34a",cursor:"pointer",fontWeight:600}}>⬆ 복원</button>
-              <button onClick={toggleMask} style={{background:maskMode?"#1e293b":"none",border:`1px solid ${maskMode?"#1e293b":"#e2e8f0"}`,borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:maskMode?"#fff":"#94a3b8",cursor:"pointer",fontWeight:600,transition:"all 0.15s"}} title={maskMode?"이름 마스킹 ON (클릭 시 해제)":"이름 마스킹 OFF (클릭 시 적용)"}>
-                {maskMode?"🔒 이름 가림":"👁 이름 표시"}
-              </button>
             </div>
             {(()=>{
               const d=localStorage.getItem("pt_eval_backup_date");
@@ -2373,10 +2295,10 @@ function App(){
       </div>
       <div className="main-area">
         <div className="panel-left" style={!isTablet&&mobileView==="content"?{display:"none"}:{}}>
-          <PatientListPanel db={db} persist={persist} selectedPatient={patient} onSelect={selectPatient} useConfirm={useConfirm} maskMode={maskMode}/>
+          <PatientListPanel db={db} persist={persist} selectedPatient={patient} onSelect={selectPatient} useConfirm={useConfirm}/>
         </div>
         <div className="panel-right" style={!isTablet&&mobileView==="list"?{display:"none"}:{display:"block",flex:1,overflow:"hidden"}}>
-          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={()=>{ setMobileViewSync("list"); try{sessionStorage.setItem("pt_last_state",JSON.stringify({patientId:patient?.id,view:"list"}));}catch{} }} goBackRef={contentGoBackRef} directNavRef={contentDirectNavRef} useConfirm={useConfirm} showToast={showToast} maskMode={maskMode}/>
+          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={()=>{ setMobileViewSync("list"); try{sessionStorage.setItem("pt_last_state",JSON.stringify({patientId:patient?.id,view:"list"}));}catch{} }} goBackRef={contentGoBackRef} directNavRef={contentDirectNavRef} useConfirm={useConfirm} showToast={showToast}/>
         </div>
       </div>
     </div>
