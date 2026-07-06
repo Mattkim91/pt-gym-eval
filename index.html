@@ -2,6 +2,9 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <script>
     // 파일 수정 시각을 버전으로 자동 감지 - 숫자 바꿀 필요 없음
@@ -65,7 +68,7 @@ self.addEventListener('fetch', e => {
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v7.1</title>
+  <title>환자 평가 관리 v7.7</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -489,7 +492,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v7.6";
+const APP_VERSION = "v7.7";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -702,7 +705,7 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
     const dd=String(now.getDate()).padStart(2,"0");
     const hh=String(now.getHours()).padStart(2,"0");
     const mi=String(now.getMinutes()).padStart(2,"0");
-    return `신환${mm}/${dd}-${hh}:${mi}`;
+    return `신환 ${mm}월${dd}일-${hh}:${mi}`;
   };
   const quickAdd=(evalKey=null)=>{
     const id=genId();
