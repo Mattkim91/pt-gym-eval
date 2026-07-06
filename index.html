@@ -495,7 +495,7 @@ const maskName=(name)=>{
   return name[0]+"O"+name.slice(2);
 };
 
-const APP_VERSION = "v7.3";
+const APP_VERSION = "v7.2";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -594,9 +594,15 @@ const IcoPencil=()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" 
 
 function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMode}){
   const [search,setSearch]=useState("");
+  const [addMode,setAddMode]=useState(false);
+  const [newId,setNewId]=useState("");
+  const [newName,setNewName]=useState("");
+  const [editPt,setEditPt]=useState(null);
+  const [editId,setEditId]=useState("");
+  const [editName,setEditName]=useState("");
   const [backupMsg,setBackupMsg]=useState("");
-  const [sortKey,setSortKey]=useState("date");
-  const [sortAsc,setSortAsc]=useState(false);
+  const [sortKey,setSortKey]=useState("date");   // "date"|"id"|"name"
+  const [sortAsc,setSortAsc]=useState(false);    // true=오름차순(오래된순), false=내림차순(최신순)
   const fileInputRef=React.useRef(null);
   const scrollRef=React.useRef(null);
   const [idErrMsg,setIdErrMsg]=useState("");
@@ -710,12 +716,9 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMo
     return "#"+n;
   };
   const genName=()=>{
-    const now=new Date();
-    const mm=String(now.getMonth()+1).padStart(2,"0");
-    const dd=String(now.getDate()).padStart(2,"0");
-    const hh=String(now.getHours()).padStart(2,"0");
-    const mi=String(now.getMinutes()).padStart(2,"0");
-    return `신환${mm}/${dd}-${hh}:${mi}`;
+    let n=1;
+    while(db.patients.find(p=>p.name==="신환"+n)) n++;
+    return "신환"+n;
   };
   const addPt=()=>{
     const id=(newId.trim()||genId());
@@ -738,6 +741,28 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMo
     if(!ok) return;
     const rec={...db.records};delete rec[id];
     persist({...db,patients:db.patients.filter(p=>p.id!==id),records:rec});
+  };
+  const startEdit=(p,e)=>{
+    e.stopPropagation();
+    setEditPt(p);
+    setEditId(p.id);
+    setEditName(p.name);
+    setAddMode(false);
+  };
+  const saveEdit=()=>{
+    if(!editId.trim()||!editName.trim()) return;
+    const oldId=editPt.id;
+    const newIdVal=editId.trim();
+    if(newIdVal!==oldId&&db.patients.find(p=>p.id===newIdVal)){showIdErr("이미 존재하는 ID입니다.");return;}
+    // ID가 바뀌면 records 키도 이전
+    const newPatients=db.patients.map(p=>p.id===oldId?{id:newIdVal,name:editName.trim()}:p);
+    const newRecords={...db.records};
+    if(newIdVal!==oldId){
+      newRecords[newIdVal]=newRecords[oldId]||{};
+      delete newRecords[oldId];
+    }
+    persist({...db,patients:newPatients,records:newRecords});
+    setEditPt(null);
   };
 
   const getLatestSavedAt=(pid)=>{
@@ -820,6 +845,7 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMo
               </div>
               <div style={{display:"flex",alignItems:"center",gap:"6px",flexShrink:0}}>
                 {isSel&&!isEditing&&<div style={{display:"flex",alignItems:"center",gap:"4px",color:"#2563eb",fontSize:"11px",fontWeight:600}}><div style={{width:"6px",height:"6px",borderRadius:"50%",background:"#2563eb",flexShrink:0}}/> 최근 열람</div>}
+                <button style={{background:"none",border:"1px solid #fcd34d",borderRadius:"6px",padding:"4px 7px",cursor:"pointer",color:"#b45309",display:"inline-flex",alignItems:"center"}} onClick={e=>startEdit(p,e)}><IcoPencil/></button>
                 <button style={S.delBtn} onClick={e=>{e.stopPropagation();delPt(p.id);}}><IcoTrash/></button>
               </div>
             </div>
@@ -832,33 +858,58 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMo
 
     {/* 하단 고정 영역: 신규등록폼 + 검색 + 신환 버튼 */}
     <div style={{flexShrink:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",padding:"10px 14px",display:"flex",flexDirection:"column",gap:"8px",boxShadow:"0 -2px 10px rgba(0,0,0,0.06)"}}>
-
+      {editPt&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"7px",background:"#fff",border:"1.5px solid #f59e0b",borderRadius:"10px",padding:"12px"}}>
+          <div style={{fontSize:"11px",fontWeight:700,color:"#b45309",marginBottom:"2px"}}>환자 정보 수정</div>
+          <div style={{position:"relative"}}>
+            <input style={{...inputStyle,borderColor:idErrMsg?"#ef4444":"#fcd34d"}} inputMode="numeric" placeholder="환자 ID" value={editId} onChange={e=>{setEditId(e.target.value);setIdErrMsg("");}} onKeyDown={e=>e.key==="Enter"&&saveEdit()}/>
+            {idErrMsg&&<div style={{position:"absolute",top:"50%",right:"10px",transform:"translateY(-50%)",fontSize:"11px",color:"#ef4444",fontWeight:700,pointerEvents:"none",background:"#fff",paddingLeft:"4px"}}>{idErrMsg}</div>}
+          </div>
+          <input style={{...inputStyle,borderColor:"#fcd34d"}} placeholder="이름" value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()}/>
+          <div style={{display:"flex",gap:"7px"}}>
+            <button style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",cursor:"pointer"}} onClick={()=>setEditPt(null)}>취소</button>
+            <button style={{flex:1,background:"#f59e0b",color:"#fff",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",fontWeight:600,cursor:"pointer"}} onClick={saveEdit}>저장</button>
+          </div>
+        </div>
+      )}
+      {addMode&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"7px",background:"#fff",border:"1.5px solid #2563eb",borderRadius:"10px",padding:"12px"}}>
+          <div style={{fontSize:"11px",fontWeight:700,color:"#2563eb",marginBottom:"2px"}}>새 환자 등록</div>
+          <div style={{position:"relative"}}>
+            <input style={{...inputStyle,borderColor:idErrMsg?"#ef4444":undefined}} inputMode="numeric" placeholder="환자 ID (선택사항)" value={newId} onChange={e=>{setNewId(e.target.value);setIdErrMsg("");}} onKeyDown={e=>e.key==="Enter"&&addPt()}/>
+            {idErrMsg&&<div style={{position:"absolute",top:"50%",right:"10px",transform:"translateY(-50%)",fontSize:"11px",color:"#ef4444",fontWeight:700,pointerEvents:"none",background:"#fff",paddingLeft:"4px"}}>{idErrMsg}</div>}
+          </div>
+          <input style={inputStyle} placeholder="이름 (선택사항)" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addPt()}/>
+          <div style={{display:"flex",gap:"7px"}}>
+            <button style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",cursor:"pointer"}} onClick={()=>{setAddMode(false);setNewId("");setNewName("");}}>취소</button>
+            <button style={{flex:1,background:"#2563eb",color:"#fff",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",fontWeight:600,cursor:"pointer"}} onClick={addPt}>저장</button>
+          </div>
+        </div>
+      )}
       <div style={{display:"flex",alignItems:"center",gap:"7px",background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 10px"}}>
         <IcoSearch/><input style={{border:"none",outline:"none",fontSize:"14px",color:"#334155",width:"100%",background:"transparent"}} placeholder="ID 또는 이름 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:"7px"}}>
-        {/* 빠른 평가 버튼 */}
+        {/* 빠른 평가 버튼 - 좌우 배치 */}
         <div style={{display:"flex",gap:"7px"}}>
           <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"4px",background:"linear-gradient(135deg,#7c3aed,#6d28d9)",color:"#fff",border:"none",borderRadius:"13px",padding:"14px 8px",fontSize:"13px",fontWeight:700,cursor:"pointer",boxShadow:"0 4px 14px rgba(109,40,217,0.35)",minHeight:"74px"}}
             onClick={()=>quickAdd("BBS")}>
-            <span style={{fontSize:"18px"}}>⚡</span>
             <span>빠른 BBS</span>
           </button>
           <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"4px",background:"linear-gradient(135deg,#f97316,#ef4444)",color:"#fff",border:"none",borderRadius:"13px",padding:"14px 8px",fontSize:"13px",fontWeight:700,cursor:"pointer",boxShadow:"0 4px 14px rgba(239,68,68,0.35)",minHeight:"74px"}}
             onClick={()=>quickAdd("10mWT")}>
-            <span style={{fontSize:"18px"}}>⚡</span>
             <span>빠른 10mWT</span>
           </button>
-          <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"4px",background:"#2563eb",color:"#fff",border:"none",borderRadius:"13px",padding:"14px 8px",fontSize:"13px",fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(37,99,235,0.18)",minHeight:"74px"}}
-            onClick={()=>quickAdd(null)}>
-            <span style={{fontSize:"18px"}}>📋</span>
-            <span>새 기록 시작</span>
-          </button>
         </div>
-        {/* 경고 문구 */}
-        <div style={{display:"flex",alignItems:"center",gap:"6px",padding:"7px 10px",background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"8px"}}>
-          <span style={{fontSize:"13px",flexShrink:0}}>🔒</span>
-          <span style={{fontSize:"10px",color:"#991b1b",lineHeight:1.4}}>환자 식별정보(이름·등록번호 등)를 직접 입력하지 마세요. 기록은 생성 시각으로만 구분됩니다.</span>
+        <div style={{display:"flex",gap:"7px"}}>
+          <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"4px",background:"#475569",color:"#fff",border:"none",borderRadius:"13px",padding:"14px 8px",fontSize:"13px",fontWeight:700,cursor:"pointer",lineHeight:1.4,textAlign:"center",boxShadow:"0 2px 8px rgba(71,85,105,0.18)",minHeight:"74px"}} onClick={()=>{setAddMode(true);setEditPt(null);}}>
+            <span style={{fontSize:"18px"}}>✏️</span>
+            <span>ID/이름 직접 등록</span>
+          </button>
+          <button style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"4px",background:"#2563eb",color:"#fff",border:"none",borderRadius:"13px",padding:"14px 8px",fontSize:"13px",fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(37,99,235,0.18)",lineHeight:1.4,textAlign:"center",minHeight:"74px"}} onClick={()=>quickAdd(null)}>
+            <span style={{fontSize:"18px"}}>⚡</span>
+            <span>자동 등록 후 시작</span>
+          </button>
         </div>
       </div>
       <input ref={fileInputRef} type="file" accept="*/*" style={{display:"none"}} onChange={importBackup}/>
