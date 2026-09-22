@@ -68,7 +68,7 @@ self.addEventListener('fetch', e => {
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v7.8</title>
+  <title>환자 평가 관리 v7.9</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -492,7 +492,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v7.8";
+const APP_VERSION = "v7.9";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2202,11 +2202,12 @@ function App(){
     }
   };
   useEffect(()=>{
-    // guard 2개 전략: 갤럭시 엣지 스와이프는 popstate를 연속 2회 발생시킴
-    // base + guard1 + guard2 구조로 스와이프가 2번 pop해도 base 못 빠져나옴
+    // guard 3개 전략: base + g1 + g2 + g3
+    // 갤럭시 스와이프(연속 2 pop)와 예기치 않은 pop 모두 방어
+    const GUARD_COUNT = 3;
     const pushGuards=()=>{
-      history.pushState({level:"guard1"},"");
-      history.pushState({level:"guard2"},"");
+      for(let i=1;i<=GUARD_COUNT;i++)
+        history.pushState({level:"guard"+i},"");
     };
     history.replaceState({level:"base"},"");
     pushGuards();
@@ -2216,9 +2217,9 @@ function App(){
 
     const onPop=async()=>{
       const now = Date.now();
-      // 300ms 이내 연속 pop → 스와이프의 2번째 pop, guard 복구만 하고 무시
+      // 300ms 이내 연속 pop → 갤럭시 스와이프 2번째, guard만 복구
       if(now - lastPopTime < 300){
-        history.pushState({level:"guard2"},"");
+        history.pushState({level:"guard_recover"},"");
         return;
       }
       lastPopTime = now;
@@ -2226,7 +2227,7 @@ function App(){
       if(popLocked){ pushGuards(); return; }
       popLocked = true;
 
-      // 항상 guard 2개 즉시 복구
+      // guard 즉시 복구
       pushGuards();
 
       try{
@@ -2242,20 +2243,30 @@ function App(){
           return;
         }
 
-        // 최상위 → 종료 확인
-        const exit = await useConfirmRef.current("앱을 종료하시겠습니까?");
-        if(exit){
-          history.go(-3); // base + guard1 + guard2 제거
-          return;
-        }
+        // 최상위 → 종료 확인 (앱을 실제로 닫지 않음, 안내만)
+        const exit = await useConfirmRef.current("앱을 종료하시겠습니까?\n\n홈 버튼을 눌러 나가시거나\n브라우저를 닫아주세요.");
+        // 종료를 원해도 history.go()로 앱을 닫지 않음
+        // 브라우저 홈버튼/탭 닫기로 유도
       } finally {
         popLocked=false;
       }
     };
 
     window.addEventListener("popstate",onPop);
+
+    // 앱이 백그라운드에서 돌아올 때 guard 상태 점검 후 복구
+    const onVisibility=()=>{
+      if(document.visibilityState==="visible"){
+        // guard가 소진됐을 경우를 대비해 재설정
+        history.replaceState({level:"base"},"");
+        pushGuards();
+      }
+    };
+    document.addEventListener("visibilitychange",onVisibility);
+
     return()=>{
       window.removeEventListener("popstate",onPop);
+      document.removeEventListener("visibilitychange",onVisibility);
     };
   },[]);
   return(
