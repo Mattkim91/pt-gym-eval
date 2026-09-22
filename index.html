@@ -68,7 +68,7 @@ self.addEventListener('fetch', e => {
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v7.7</title>
+  <title>환자 평가 관리 v7.8</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -492,7 +492,7 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v7.7";
+const APP_VERSION = "v7.8";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2058,24 +2058,22 @@ function FgaFloatingTimer({onClose,elapsed,running,start,stop,reset}){
 
 
 function MmtInput({value, onChange}){
-  const append=(ch)=>{
-    const v=(value||"").trim();
-    const num=v.replace(/[+\-]/g,"");
-    const hasMinus=v.includes("-");
-    const hasPlus=v.includes("+");
-    if(ch==="-"){
-      if(hasMinus) onChange(num);
-      else if(hasPlus) onChange(num+"-");
-      else onChange(v+"-");
-    } else if(ch==="+"){
-      if(hasPlus) onChange(num);
-      else if(hasMinus) onChange(num+"+");
-      else onChange(v+"+");
+  const STEPS=["0","1","2-","2","2+","3-","3","3+","4-","4","4+","5"];
+  const v=(value||"").trim();
+  const idx=STEPS.indexOf(v);
+  const step=(dir)=>{
+    if(v===""){
+      onChange(dir===1?"1":"4");
+      return;
     }
+    if(idx===-1){ onChange(""); return; }
+    const next=idx+dir;
+    if(next<0||next>=STEPS.length) return;
+    onChange(STEPS[next]);
   };
   const sideBtnStyle={
     width:"22px",height:"34px",border:"none",borderRadius:0,
-    background:"transparent",color:"#94a3b8",fontSize:"14px",fontWeight:700,
+    background:"transparent",color:"#475569",fontSize:"16px",fontWeight:700,
     cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
     flexShrink:0,WebkitTapHighlightColor:"transparent",lineHeight:1,padding:0,
   };
@@ -2085,7 +2083,7 @@ function MmtInput({value, onChange}){
       background:"#fff",height:"34px",width:"88px"}}>
       <button
         onTouchStart={e=>e.preventDefault()}
-        onMouseDown={e=>{e.preventDefault();append("-");}}
+        onMouseDown={e=>{e.preventDefault();step(-1);}}
         style={sideBtnStyle}>−</button>
       <input
         type="text" inputMode="numeric"
@@ -2097,7 +2095,7 @@ function MmtInput({value, onChange}){
       />
       <button
         onTouchStart={e=>e.preventDefault()}
-        onMouseDown={e=>{e.preventDefault();append("+");}}
+        onMouseDown={e=>{e.preventDefault();step(1);}}
         style={sideBtnStyle}>+</button>
     </div>
   );
