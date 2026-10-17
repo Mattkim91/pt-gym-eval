@@ -68,7 +68,7 @@ self.addEventListener('fetch', e => {
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v7.9</title>
+  <title>환자 평가 관리 v8.1</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -492,7 +492,13 @@ const matchSearch=(text,q)=>{
   return false;
 };
 
-const APP_VERSION = "v7.9";
+// 이름 마스킹: 두 번째 글자만 O로 표시
+const maskName=(name)=>{
+  if(!name||name.length<=1) return name;
+  return name[0]+"O"+name.slice(2);
+};
+
+const APP_VERSION = "v8.1";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -589,11 +595,15 @@ const S={
 
 const IcoPencil=()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
 
-function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
+function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,maskMode,onToggleMask}){
   const [search,setSearch]=useState("");
   const [backupMsg,setBackupMsg]=useState("");
   const [sortKey,setSortKey]=useState("date");
   const [sortAsc,setSortAsc]=useState(false);
+  const [addMode,setAddMode]=useState(false);
+  const [newName,setNewName]=useState("");
+  const [editPt,setEditPt]=useState(null);
+  const [editName,setEditName]=useState("");
   const fileInputRef=React.useRef(null);
   const scrollRef=React.useRef(null);
   useEffect(()=>{
@@ -707,6 +717,24 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
     const mi=String(now.getMinutes()).padStart(2,"0");
     return `신환 ${mm}월${dd}일-${hh}:${mi}`;
   };
+  const addPt=()=>{
+    const name=newName.trim()||genName();
+    const id=genId();
+    persist({...db,patients:[...db.patients,{id,name,createdAt:Date.now()}]});
+    setNewName("");setAddMode(false);
+  };
+  const startEdit=(p,e)=>{
+    e.stopPropagation();
+    setEditPt(p);
+    setEditName(p.name);
+    setAddMode(false);
+  };
+  const saveEdit=()=>{
+    if(!editName.trim()) return;
+    const newPatients=db.patients.map(p=>p.id===editPt.id?{...p,name:editName.trim()}:p);
+    persist({...db,patients:newPatients});
+    setEditPt(null);
+  };
   const quickAdd=(evalKey=null)=>{
     const id=genId();
     const name=genName();
@@ -789,9 +817,10 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
                     return(
             <div key={p.id} className="pt-row" style={{padding:"11px 12px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",justifyContent:"space-between",background:isSel?"#eff6ff":"white"}} onClick={()=>onSelect(p)}>
               <div style={{minWidth:0,flex:1}}>
-                <div style={{display:"flex",alignItems:"baseline",gap:"8px",flexWrap:"wrap"}}>
+                <div style={{display:"flex",alignItems:"center",gap:"6px",flexWrap:"wrap"}}>
                   <span style={{fontFamily:"monospace",color:"#2563eb",fontSize:"12px"}}>{p.id}</span>
-                  <span style={{fontWeight:600,fontSize:"14px",color:"#1e293b"}}>{p.name}</span>
+                  <span style={{fontWeight:600,fontSize:"14px",color:"#1e293b"}}>{maskMode?maskName(p.name):p.name}</span>
+                  <button style={{background:"none",border:"1px solid #fcd34d",borderRadius:"5px",padding:"2px 5px",cursor:"pointer",color:"#b45309",display:"inline-flex",alignItems:"center",flexShrink:0}} onClick={e=>startEdit(p,e)}><IcoPencil/></button>
                   <span style={{fontSize:"11px",color:"#94a3b8"}}>{total}건</span>
                 </div>
                 <div style={{fontSize:"11px",color:"#94a3b8",marginTop:"2px",display:"flex",flexDirection:"column",gap:"1px"}}>
@@ -817,6 +846,30 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
       <div style={{display:"flex",alignItems:"center",gap:"7px",background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 10px"}}>
         <IcoSearch/><input style={{border:"none",outline:"none",fontSize:"14px",color:"#334155",width:"100%",background:"transparent"}} placeholder="ID 또는 이름 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
+      {editPt&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"7px",background:"#fff",border:"1.5px solid #f59e0b",borderRadius:"10px",padding:"12px"}}>
+          <div style={{fontSize:"11px",fontWeight:700,color:"#b45309",marginBottom:"2px"}}>이름 수정</div>
+          <input style={{border:"1.5px solid #fcd34d",borderRadius:"7px",padding:"8px 10px",outline:"none",color:"#1e293b",fontSize:"15px",width:"100%"}}
+            placeholder="이름 입력" value={editName} onChange={e=>setEditName(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&saveEdit()}/>
+          <div style={{display:"flex",gap:"7px"}}>
+            <button style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",cursor:"pointer"}} onClick={()=>setEditPt(null)}>취소</button>
+            <button style={{flex:1,background:"#f59e0b",color:"#fff",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",fontWeight:600,cursor:"pointer"}} onClick={saveEdit}>저장</button>
+          </div>
+        </div>
+      )}
+      {addMode&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"7px",background:"#fff",border:"1.5px solid #2563eb",borderRadius:"10px",padding:"12px"}}>
+          <div style={{fontSize:"11px",fontWeight:700,color:"#2563eb",marginBottom:"2px"}}>새 환자 등록</div>
+          <input style={{border:"1.5px solid #e2e8f0",borderRadius:"7px",padding:"8px 10px",outline:"none",color:"#1e293b",fontSize:"15px",width:"100%"}}
+            placeholder="이름 (비워두면 시각 자동입력)" value={newName} onChange={e=>setNewName(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&addPt()}/>
+          <div style={{display:"flex",gap:"7px"}}>
+            <button style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",cursor:"pointer"}} onClick={()=>{setAddMode(false);setNewName("");}}>취소</button>
+            <button style={{flex:1,background:"#2563eb",color:"#fff",border:"none",borderRadius:"7px",padding:"9px",fontSize:"14px",fontWeight:600,cursor:"pointer"}} onClick={addPt}>저장</button>
+          </div>
+        </div>
+      )}
       <div style={{display:"flex",flexDirection:"column",gap:"7px"}}>
         {/* 빠른 평가 버튼 */}
         <div style={{display:"flex",gap:"7px"}}>
@@ -836,10 +889,12 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
             <span>새 기록 시작</span>
           </button>
         </div>
-        {/* 경고 문구 */}
-        <div style={{display:"flex",alignItems:"center",gap:"6px",padding:"7px 10px",background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"8px"}}>
-          <span style={{fontSize:"13px",flexShrink:0}}>🔒</span>
-          <span style={{fontSize:"10px",color:"#991b1b",lineHeight:1.4}}>환자 식별정보(이름·등록번호 등)를 직접 입력하지 마세요. 기록은 생성 시각으로만 구분됩니다.</span>
+        {/* 이름 입력 등록 */}
+        <div style={{display:"flex",gap:"7px"}}>
+          <button style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",background:"#475569",color:"#fff",border:"none",borderRadius:"11px",padding:"11px 8px",fontSize:"12px",fontWeight:600,cursor:"pointer"}}
+            onClick={()=>{setAddMode(v=>!v);setEditPt(null);}}>
+            <span>✏️</span><span>이름 입력 등록</span>
+          </button>
         </div>
       </div>
       <input ref={fileInputRef} type="file" accept="*/*" style={{display:"none"}} onChange={importBackup}/>
@@ -990,7 +1045,7 @@ function buildPrintHtml(patient, date, items, templates){
   </body></html>`;
 }
 
-function DateSummaryView({db,persist,patient,templates,onEditForm}){
+function DateSummaryView({db,persist,patient,templates,onEditForm,maskMode}){
   const pid=patient.id;
   const allRecs=db.records[pid]||{};
 
@@ -1680,7 +1735,7 @@ function RecordSummary({evalKey,data,col,templates}){
   );
 }
 
-function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,directNavRef,useConfirm,showToast}){
+function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,directNavRef,useConfirm,showToast,maskMode}){
   const [tab,setTab]=useState("item");   // "item" | "date"
   const [rv,setRv]=useState("eval-select");
   const [ek,setEk]=useState(null);
@@ -1749,7 +1804,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
   const crumb=()=>{
     if(!patient) return null;
     const col=ek?EVAL_COLORS[ek]:null;
-    const base=<span style={{fontWeight:700,color:"#1e293b"}}>{patient.name}</span>;
+    const base=<span style={{fontWeight:700,color:"#1e293b"}}>{maskMode?maskName(patient.name):patient.name}</span>;
     if(ek&&rv==="eval-form") return(
       <span style={{display:"flex",alignItems:"center",gap:"5px",flexWrap:"nowrap"}}>
         {base}
@@ -1851,7 +1906,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
         {/* 날짜별 탭 */}
         {rv==="eval-select"&&tab==="date"&&(
           <><p style={S.secLabel}>날짜별 보기</p>
-          <div style={{paddingBottom:"120px"}}><DateSummaryView db={db} persist={persist} patient={patient} templates={db.templates} onEditForm={handleDateEditForm}/></div>
+          <div style={{paddingBottom:"120px"}}><DateSummaryView db={db} persist={persist} patient={patient} templates={db.templates} maskMode={maskMode} onEditForm={handleDateEditForm}/></div>
           {/* 항목별 FAB */}
           <button onClick={()=>setTab("item")}
             style={{right:"12px",position:"fixed",bottom:"24px",zIndex:500,display:"flex",alignItems:"center",gap:"6px",borderRadius:"24px",padding:"10px 18px",fontSize:"13px",fontWeight:600,cursor:"pointer",boxShadow:"0 2px 10px rgba(0,0,0,0.12)",WebkitTapHighlightColor:"transparent",border:"1.5px solid transparent",background:"#2563eb",color:"#fff"}}>
@@ -2162,6 +2217,16 @@ function App(){
     }catch{return "list";}
   });
   const contentGoBackRef=React.useRef(null);
+  const [maskMode,setMaskMode]=useState(()=>localStorage.getItem("pt_mask_mode")===null||localStorage.getItem("pt_mask_mode")==="1");
+  const toggleMask=()=>setMaskMode(v=>{const next=!v;localStorage.setItem("pt_mask_mode",next?"1":"0");return next;});
+  const [showReleaseNotes,setShowReleaseNotes]=useState(false);
+  const [showUpdateBanner,setShowUpdateBanner]=useState(()=>{
+    const seen=localStorage.getItem("pt_seen_version");
+    // 처음 방문자(seen===null): 팝업 없이 현재 버전 저장
+    if(seen===null){localStorage.setItem("pt_seen_version",APP_VERSION);return false;}
+    // 기존 사용자이고 버전이 다르면 팝업 표시
+    return seen!==APP_VERSION;
+  });
   const contentDirectNavRef=React.useRef(null);
   const mobileViewRef=React.useRef("list");
   const setMobileViewSync=(v)=>{mobileViewRef.current=v;setMobileView(v);};
@@ -2274,20 +2339,72 @@ function App(){
       <ConfirmDialog msg={confirmState.msg} onYes={confirmState.onYes} onNo={confirmState.onNo}/>
       <Toast data={toastData} onAction={handleToastAction}/>
 
+      {showReleaseNotes&&(
+        <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}} onClick={()=>setShowReleaseNotes(false)}>
+          <div style={{background:"#fff",borderRadius:"16px",padding:"24px",maxWidth:"420px",width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"18px"}}>
+              <span style={{fontSize:"17px",fontWeight:800,color:"#1e293b"}}>📋 업데이트 내역</span>
+              <button onClick={()=>setShowReleaseNotes(false)} style={{background:"none",border:"none",fontSize:"20px",color:"#94a3b8",cursor:"pointer",padding:"2px 6px",lineHeight:1}}>✕</button>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"18px"}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
+                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.1</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.10.17</span>
+                  <span style={{background:"#dcfce7",color:"#16a34a",borderRadius:"5px",padding:"1px 7px",fontSize:"11px",fontWeight:600}}>최신</span>
+                </div>
+                <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  <li style={{fontSize:"13px",color:"#334155"}}>🔒 이름 가림 기능 기본값 활성화 — 앱 설치 시 환자 이름이 자동으로 마스킹됨</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>🔝 이름 가림 토글 버튼 상단에 배치</li>
+                  <li style={{fontSize:"13px",color:"#334155",display:"flex",alignItems:"center",gap:"4px"}}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 3v13"/><path d="M6 11l6 6 6-6"/><path d="M4 20h16"/></svg> 업데이트 내역(릴리즈노트) 기능 추가</li>
+                </ul>
+              </div>
+            </div>
+            <button onClick={()=>setShowReleaseNotes(false)} style={{marginTop:"20px",width:"100%",background:"#1e293b",color:"#fff",border:"none",borderRadius:"10px",padding:"12px",fontSize:"14px",fontWeight:700,cursor:"pointer"}}>확인</button>
+          </div>
+        </div>
+      )}
+      {showUpdateBanner&&(
+        <div style={{position:"fixed",inset:0,zIndex:9998,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}} onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);}}>
+          <div style={{background:"#fff",borderRadius:"16px",padding:"24px",maxWidth:"380px",width:"100%",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{textAlign:"center",marginBottom:"16px"}}>
+              <div style={{fontSize:"36px",marginBottom:"8px"}}>🎉</div>
+              <div style={{fontSize:"18px",fontWeight:800,color:"#1e293b",marginBottom:"6px"}}>v8.1 업데이트</div>
+              <div style={{fontSize:"13px",color:"#64748b",lineHeight:1.6}}>앱이 업데이트되었어요.<br/>주요 변경사항을 확인해보세요.</div>
+            </div>
+            <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
+              <li style={{fontSize:"13px",color:"#334155"}}>🔒 이름 가림이 기본값으로 설정됨</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>🔝 이름 가림 버튼 상단에 배치</li>
+              <li style={{fontSize:"13px",color:"#334155",display:"flex",alignItems:"center",gap:"4px"}}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 3v13"/><path d="M6 11l6 6 6-6"/><path d="M4 20h16"/></svg> 업데이트 내역 기능 추가</li>
+            </ul>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);setShowReleaseNotes(true);}} style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>자세히 보기</button>
+              <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);}} style={{flex:1,background:"#2563eb",color:"#fff",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:700,cursor:"pointer"}}>확인</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="topbar">
         <div style={{display:"flex",alignItems:"center",gap:"6px",minWidth:0,flex:1}}>
           {!isTablet&&mobileView==="content"&&(
             <button onClick={()=>setMobileViewSync("list")} style={{background:"none",border:"none",padding:"6px 6px 6px 0",color:"#475569",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}><IcoBack/></button>
           )}
           {!isTablet&&mobileView==="content"&&patient?(
-            <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{patient.name}</span>
+            <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{maskMode?maskName(patient.name):patient.name}</span>
           ):(
             <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b"}}>환자 평가 관리 <span style={{fontSize:"12px",fontWeight:500,color:"#94a3b8"}}>{APP_VERSION}</span></span>
           )}
         </div>
-        {(!isTablet||mobileView!=="content")&&(
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"3px",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:"5px",flexShrink:0}}>
+          <button onClick={toggleMask}
+            title={maskMode?"이름 가림 켜짐 (클릭시 해제)":"이름 가림 꺼짐 (클릭시 활성화)"}
+            style={{background:maskMode?"#1e293b":"none",border:`1px solid ${maskMode?"#1e293b":"#e2e8f0"}`,borderRadius:"7px",padding:"4px 8px",fontSize:"11px",color:maskMode?"#fff":"#94a3b8",cursor:"pointer",fontWeight:600,transition:"all 0.15s",whiteSpace:"nowrap"}}>
+            이름가림
+          </button>
+          {(!isTablet||mobileView!=="content")&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"3px"}}>
             <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+              <button onClick={()=>setShowReleaseNotes(true)} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 7px",fontSize:"11px",color:"#94a3b8",cursor:"pointer",fontWeight:600,display:"inline-flex",alignItems:"center"}} title="업데이트 내역"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 3v13"/><path d="M6 11l6 6 6-6"/><path d="M4 20h16"/></svg></button>
               <button onClick={()=>document.dispatchEvent(new CustomEvent("backup-export"))} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#2563eb",cursor:"pointer",fontWeight:600}}>⬇ 백업</button>
               <button onClick={()=>document.dispatchEvent(new CustomEvent("backup-import"))} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#16a34a",cursor:"pointer",fontWeight:600}}>⬆ 복원</button>
             </div>
@@ -2303,14 +2420,15 @@ function App(){
               return <span style={{fontSize:"9px",color,fontWeight:600}}>마지막 백업 {label}</span>;
             })()}
           </div>
-        )}
+          )}
+        </div>
       </div>
       <div className="main-area">
         <div className="panel-left" style={!isTablet&&mobileView==="content"?{display:"none"}:{}}>
-          <PatientListPanel db={db} persist={persist} selectedPatient={patient} onSelect={selectPatient} useConfirm={useConfirm}/>
+          <PatientListPanel db={db} persist={persist} selectedPatient={patient} onSelect={selectPatient} useConfirm={useConfirm} maskMode={maskMode} onToggleMask={toggleMask}/>
         </div>
         <div className="panel-right" style={!isTablet&&mobileView==="list"?{display:"none"}:{display:"block",flex:1,overflow:"hidden"}}>
-          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={()=>{ setMobileViewSync("list"); try{sessionStorage.setItem("pt_last_state",JSON.stringify({patientId:patient?.id,view:"list"}));}catch{} }} goBackRef={contentGoBackRef} directNavRef={contentDirectNavRef} useConfirm={useConfirm} showToast={showToast}/>
+          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={()=>{ setMobileViewSync("list"); try{sessionStorage.setItem("pt_last_state",JSON.stringify({patientId:patient?.id,view:"list"}));}catch{} }} goBackRef={contentGoBackRef} directNavRef={contentDirectNavRef} useConfirm={useConfirm} showToast={showToast} maskMode={maskMode}/>
         </div>
       </div>
     </div>
