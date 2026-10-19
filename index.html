@@ -21,6 +21,128 @@
       navigator.serviceWorker.register("sw.js", { scope: "./", updateViaCache: "none" }).catch(()=>{});
     }
 
+    // 작성 중 화면. 안드로이드가 하단 뒤로 버튼으로 활동을 바로 죽이면
+    // pagehide/visibilitychange가 안 뜨므로, 입력 순간에 동기 저장한 값만 믿는다.
+    var PT_SCREEN="pt_screen_state";
+    var PT_SCREEN_KEEP="pt_screen_state_keep";
+    function ptReadKey(k){
+      try{
+        var raw=localStorage.getItem(k);
+        if(!raw) return null;
+        var s=JSON.parse(raw);
+        return s&&typeof s==="object"?s:null;
+      }catch(e){ return null; }
+    }
+    function ptReadScreen(){
+      return ptReadKey(PT_SCREEN)||ptReadKey(PT_SCREEN_KEEP);
+    }
+    try{
+      if(!localStorage.getItem(PT_SCREEN)){
+        var kept=localStorage.getItem(PT_SCREEN_KEEP);
+        if(kept) localStorage.setItem(PT_SCREEN, kept);
+      }
+    }catch(e){}
+    window.__ptBootScreen=ptReadScreen();
+    function ptRank(s){
+      if(!s) return 0;
+      if(s.rv==="eval-form") return 3;
+      if(s.rv==="eval-history"||s.rv==="date-view") return 2;
+      if(s.mobileView==="content"||s.patientId) return 1;
+      return 0;
+    }
+    // 효과/pagehide가 더 얕은 화면으로 덮어쓰지 못하게 막는다. 사용자가 뒤로 간 경우만 얕아진다.
+    window.__ptWriteScreen=function(next, reason){
+      try{
+        var prev=ptReadScreen();
+        if(reason!=="user" && prev){
+          var lostDraft=!!(prev.dirty && prev.rv==="eval-form" && !(next && next.dirty && next.rv==="eval-form" && next.patientId===prev.patientId && next.ek===prev.ek));
+          var lostDepth=ptRank(prev)>ptRank(next);
+          if(lostDraft||lostDepth) return false;
+        }
+        var raw=JSON.stringify(next);
+        localStorage.setItem(PT_SCREEN, raw);
+        localStorage.setItem(PT_SCREEN_KEEP, raw);
+        return true;
+      }catch(e){ return false; }
+    };
+    function preserveScreenForReload(){
+      try{
+        var s=localStorage.getItem(PT_SCREEN)||localStorage.getItem(PT_SCREEN_KEEP);
+        if(s){
+          localStorage.setItem(PT_SCREEN, s);
+          localStorage.setItem(PT_SCREEN_KEEP, s);
+        }
+      }catch(e){}
+    }
+
+    // 크롬 안드로이드 홈 화면 앱(WebAPK)은 주소가 그대로인 pushState를
+    // 하단 뒤로 버튼 history로 세지 않고 활동을 종료한다.
+    // 그래서 가드마다 해시(#pt1, #pt2)를 바꿔 실제 히스토리 항목으로 만든다.
+    // 페이지를 열 때(사용자 동작 없이) 넣은 항목은 무시되므로, 첫 터치/키 입력에서 쌓는다.
+    // 폼 → 기록 → 항목 → 목록 → 종료확인까지 한 번씩 막을 깊이.
+    // 사용자 동작 한 번에 해시를 여러 개 넣는다. WebAPK은 그중 실제 주소가 바뀐 항목만 뒤로가기로 센다.
+    var PT_GUARD_MAX=4;
+    var ptGuard=0;
+    window.__ptAllowExit=false;
+    function ptBaseUrl(){ return location.pathname+location.search; }
+    function ptGuardUrl(n){ return ptBaseUrl()+"#pt"+n; }
+    function ptTopUp(){
+      if(window.__ptAllowExit) return;
+      if(navigator.userActivation && navigator.userActivation.isActive===false) return;
+      var n=0;
+      while(ptGuard<PT_GUARD_MAX && n<PT_GUARD_MAX){
+        try{
+          history.pushState({pt:"guard", n:ptGuard+1}, "", ptGuardUrl(ptGuard+1));
+          ptGuard++;
+        }catch(e){ break; }
+        n++;
+      }
+    }
+    window.__ptTopUp=ptTopUp;
+    try{
+      if(history.state && history.state.pt==="guard") ptGuard=history.state.n||1;
+      else history.replaceState({pt:"root"}, "", ptBaseUrl());
+    }catch(e){}
+    var ptBurst=0, ptStepping=false;
+    function ptOnPop(){
+      if(window.__ptAllowExit) return;
+      var onGuard=history.state && history.state.pt==="guard";
+      if(!onGuard){
+        try{ history.pushState({pt:"guard", n:1}, "", ptGuardUrl(1)); }catch(e){}
+        ptGuard=1;
+      }else{
+        ptGuard=history.state.n||1;
+        if(ptGuard<1) ptGuard=1;
+        if(ptGuard>PT_GUARD_MAX) ptGuard=PT_GUARD_MAX;
+      }
+      clearTimeout(ptBurst);
+      ptBurst=setTimeout(function(){
+        if(ptStepping) return;
+        ptStepping=true;
+        try{ if(typeof window.__ptOnBack==="function") window.__ptOnBack(); }
+        finally{ ptStepping=false; }
+      }, 50);
+    }
+    function ptArm(e){
+      // 한글 입력 조합 중에 해시를 바꾸면 글자가 빠진다.
+      if(e && (e.isComposing || e.keyCode===229)) return;
+      var t=e&&e.type;
+      // 이미 가드가 있으면 키 입력마다 해시를 밀지 않는다. 첫 글자에서만 한 번 쌓는다.
+      if((t==="keydown"||t==="input"||t==="touchstart") && ptGuard>=1) return;
+      ptTopUp();
+    }
+    // touchstart는 사용자 활성화가 없을 수 있어 ptTopUp이 그냥 돌아간다.
+    // click/touchend는 WebAPK 하단 뒤로 버튼이 세는 제스처다.
+    ["pointerdown","mousedown","touchstart","touchend","click","keydown","input"].forEach(function(ev){
+      window.addEventListener(ev, ptArm, true);
+    });
+    window.addEventListener("popstate", ptOnPop);
+    window.addEventListener("pageshow", function(e){ if(e.persisted) ptTopUp(); });
+    function ptFlushHidden(){ if(typeof window.__ptFlush==="function") window.__ptFlush(); }
+    document.addEventListener("visibilitychange", function(){ if(document.visibilityState==="hidden") ptFlushHidden(); });
+    window.addEventListener("pagehide", ptFlushHidden);
+    document.addEventListener("freeze", ptFlushHidden);
+
     // 파일 수정 시각을 버전으로 자동 감지 - 숫자 바꿀 필요 없음
     // HEAD는 서비스워커가 가로채지 않는다(GET만 처리). 온라인이면 새 파일을 받고,
     // 저장된 버전과 다르면 앱 캐시만 비운 뒤 한 번 새로고침한다.
@@ -42,7 +164,7 @@
             localStorage.setItem("pt_eval_backup_date", localDateStr());
             localStorage.setItem("pt_eval_backup_time", new Date().toISOString());
           }
-          const finish = () => { window.location.reload(); };
+          const finish = () => { preserveScreenForReload(); window.location.reload(); };
           const tasks = [];
           if("caches" in window) tasks.push(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))));
           if("serviceWorker" in navigator){
@@ -63,7 +185,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v8.3</title>
+  <title>환자 평가 관리 v8.4</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -492,7 +614,7 @@ const maskName=(name)=>{
   return name[0]+"O"+name.slice(2);
 };
 
-const APP_VERSION = "v8.3";
+const APP_VERSION = "v8.4";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1883,19 +2005,20 @@ function RecordSummary({evalKey,data,col,templates}){
 function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,directNavRef,useConfirm,showToast,initialNav,onScreen,requestBackRef,onDraft}){
   const bootRef=React.useRef(undefined);
   if(bootRef.current===undefined){
-    const nav=initialNav && patient && initialNav.patientId===patient.id ? initialNav : null;
+    const nav=screenMatchesPatient(initialNav, patient) ? initialNav : null;
     bootRef.current=nav||null;
   }
   const boot=bootRef.current;
+  const bootDraftLive=!!(boot&&boot.dirty&&boot.draft&&typeof boot.draft==="object"&&boot.ek);
   const [tab,setTab]=useState(boot&&boot.tab==="date"?"date":"item");
-  const [rv,setRv]=useState(boot&&boot.rv?boot.rv:"eval-select");
+  const [rv,setRv]=useState(bootDraftLive?"eval-form":(boot&&boot.rv?boot.rv:"eval-select"));
   const [ek,setEk]=useState(boot&&boot.ek?boot.ek:null);
   const [editRec,setEditRec]=useState(()=>{
     if(!boot||boot.rv!=="eval-form"||!boot.ek||!patient||boot.editRecId==null) return null;
     const list=(db.records[patient.id]||{})[boot.ek]||[];
     return list.find(r=>r.id===boot.editRecId)||null;
   });
-  const restoredDraft=boot&&boot.dirty&&boot.rv==="eval-form"&&boot.draft&&typeof boot.draft==="object"?boot.draft:null;
+  const restoredDraft=bootDraftLive?boot.draft:null;
   const [bootDraft,setBootDraft]=useState(restoredDraft);
   useEffect(()=>{ if(rv!=="eval-form"&&bootDraft) setBootDraft(null); },[rv,bootDraft]);
   const [scoreDisplay,setScoreDisplay]=useState(null); // {label, value, max, accent, bg, border}
@@ -1908,11 +2031,32 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
   },[patient?.id]);
 
   // 뷰 전환 - React state만으로 관리
+  const emitScreen=(partial, reason)=>{
+    if(!onScreen) return;
+    onScreen({
+      patientId:patient?.id||null,
+      rv:partial.rv!==undefined?partial.rv:rv,
+      tab:partial.tab!==undefined?partial.tab:tab,
+      ek:partial.ek!==undefined?partial.ek:ek,
+      editRecId:partial.editRecId!==undefined?partial.editRecId:(editRec?editRec.id:null),
+      dropDraft:!!partial.dropDraft,
+    }, reason||"user");
+  };
   const navTo=(nextRv,opts={})=>{
+    const nextEk=opts.ek!==undefined?opts.ek:ek;
+    const nextEdit=opts.editRec!==undefined?opts.editRec:editRec;
+    const nextTab=opts.tab!==undefined?opts.tab:tab;
     if(opts.ek!==undefined) setEk(opts.ek);
     if(opts.editRec!==undefined) setEditRec(opts.editRec);
     if(opts.tab!==undefined) setTab(opts.tab);
     setRv(nextRv);
+    emitScreen({
+      rv:nextRv,
+      ek:nextEk,
+      tab:nextTab,
+      editRecId:nextEdit&&nextEdit.id!=null?nextEdit.id:null,
+      dropDraft:nextRv!=="eval-form"||opts.ek!==undefined,
+    }, "user");
   };
 
   // 외부(App)에서 직접 navTo 호출용 ref
@@ -1928,11 +2072,21 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
         return true;
       }
       evalFormDirtyRef.current=false;
+      const next=tab==="date"?"date-view":"eval-history";
       setEditRec(null);
-      setRv(tab==="date"?"date-view":"eval-history");
+      setRv(next);
+      emitScreen({rv:next, editRecId:null, dropDraft:true}, "user");
       return true;
-    } else if(rv==="eval-history"){setEk(null);setRv("eval-select");return true;}
-    else if(rv==="date-view"){setRv("eval-select");return true;}
+    } else if(rv==="eval-history"){
+      setEk(null);setRv("eval-select");
+      emitScreen({rv:"eval-select", ek:null, editRecId:null, dropDraft:true}, "user");
+      return true;
+    }
+    else if(rv==="date-view"){
+      setRv("eval-select");
+      emitScreen({rv:"eval-select", dropDraft:true}, "user");
+      return true;
+    }
     else if(rv==="eval-select"){
       if(onBackToList&&onBackToList()) return true;
       return false;
@@ -1943,13 +2097,13 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
   React.useEffect(()=>{
     goBackLatest.current=goBack;
     if(goBackRef) goBackRef.current=()=>goBackLatest.current();
-    if(onScreen) onScreen({
+    if(onScreen && (patient||!(window.__ptBootScreen&&window.__ptBootScreen.patientId))) onScreen({
       patientId:patient?.id||null,
       rv:patient?rv:"eval-select",
       tab,
       ek:patient?ek:null,
       editRecId:patient&&editRec?editRec.id:null,
-    });
+    }, "effect");
   });
 
   const getRecs=(k)=>(db.records[patient?.id]?.[k]||[]).slice().sort((a,b)=>{
@@ -2139,9 +2293,10 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
             onSave={(data,isAuto)=>{
               saveRec(ek,data,editRec?.id??null);
               evalFormDirtyRef.current=false;
+              const next=tab==="date"?"date-view":"eval-history";
               setEditRec(null);
-              if(tab==="date"){setRv("date-view");}
-              else{setRv("eval-history");}
+              setRv(next);
+              emitScreen({rv:next, editRecId:null, dropDraft:true}, "user");
               if(isAuto){
                 showToast("입력 중이던 내용이 자동저장됐습니다",5000);
               } else if(showToast){
@@ -2152,9 +2307,10 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
             }}
             onCancel={()=>{
               evalFormDirtyRef.current=false;
+              const next=tab==="date"?"date-view":"eval-history";
               setEditRec(null);
-              if(tab==="date"){setRv("date-view");}
-              else{setRv("eval-history");}
+              setRv(next);
+              emitScreen({rv:next, editRecId:null, dropDraft:true}, "user");
             }}/>
         )}
 
@@ -2332,12 +2488,12 @@ function Toast({data,onAction}){
   if(!data||!data.msg) return null;
   const hasAction=!!(data.nextEval&&onAction);
   return(
-    <div style={{position:"fixed",bottom:"90px",left:"50%",transform:"translateX(-50%)",zIndex:9998,
+    <div style={{position:"fixed",bottom:"90px",left:"50%",transform:"translateX(-50%)",zIndex:10020,
       background:"#1e293b",color:"#fff",borderRadius:"14px",
       padding:hasAction?"10px 10px 10px 16px":"10px 20px",
       fontSize:"13px",fontWeight:600,boxShadow:"0 4px 20px rgba(0,0,0,0.25)",
-      display:"flex",alignItems:"center",gap:"10px",
-      pointerEvents:hasAction?"auto":"none",whiteSpace:"nowrap"}}>
+      display:"flex",alignItems:"center",gap:"10px",maxWidth:"92vw",
+      pointerEvents:hasAction?"auto":"none",whiteSpace:"normal",textAlign:"center"}}>
       <span>{data.msg}</span>
       {hasAction&&(
         <button onClick={onAction}
@@ -2367,11 +2523,27 @@ function ConfirmDialog({msg, onYes, onNo}){
 
 function readScreenState(){
   try{
-    const raw=localStorage.getItem("pt_screen_state");
-    if(!raw) return null;
-    const s=JSON.parse(raw);
-    return s&&typeof s==="object"?s:null;
-  }catch(e){ return null; }
+    const raw=localStorage.getItem("pt_screen_state")||localStorage.getItem("pt_screen_state_keep");
+    if(raw){
+      const s=JSON.parse(raw);
+      if(s&&typeof s==="object") return s;
+    }
+  }catch(e){}
+  try{
+    if(typeof window.__ptBootScreen!=="undefined" && window.__ptBootScreen) return window.__ptBootScreen;
+  }catch(e){}
+  return null;
+}
+function screenMatchesPatient(screen, patient){
+  if(!screen||!patient) return false;
+  if(screen.patientId===patient.id) return true;
+  if(patient.legacyId && screen.patientId===patient.legacyId) return true;
+  return false;
+}
+function screenWantsContent(s){
+  if(!s) return false;
+  if(s.mobileView==="content") return true;
+  return s.rv==="eval-form"||s.rv==="eval-history"||s.rv==="date-view"||!!s.dirty;
 }
 
 function App(){
@@ -2387,7 +2559,7 @@ function App(){
       return findPatientByStoredId(loadData().patients, bootNav.patientId);
     }catch(e){ return null; }
   });
-  const [mobileView,setMobileView]=useState(()=>bootNav&&bootNav.mobileView==="content"?"content":"list");
+  const [mobileView,setMobileView]=useState(()=>screenWantsContent(bootNav)?"content":"list");
   const contentGoBackRef=React.useRef(null);
   const [showReleaseNotes,setShowReleaseNotes]=useState(false);
   const [showUpdateBanner,setShowUpdateBanner]=useState(()=>{
@@ -2398,7 +2570,7 @@ function App(){
     return seen!==APP_VERSION;
   });
   const contentDirectNavRef=React.useRef(null);
-  const mobileViewRef=React.useRef(bootNav&&bootNav.mobileView==="content"?"content":"list");
+  const mobileViewRef=React.useRef(screenWantsContent(bootNav)?"content":"list");
   const setMobileViewSync=(v)=>{mobileViewRef.current=v;setMobileView(v);};
   const patientRef=React.useRef(null);
   patientRef.current=patient;
@@ -2449,31 +2621,63 @@ function App(){
     confirmStateRef.current=state;
     setConfirmState(state);
   });
-  const flushScreen=()=>{
+  const flushScreen=(reason)=>{
     const screen=screenRef.current||{};
+    const onForm=screen.rv==="eval-form";
+    const keepDraft=!!(onForm && draftDirtyRef.current);
     const payload={
       patientId:patientRef.current?.id||screen.patientId||null,
       mobileView:mobileViewRef.current||"list",
       rv:screen.rv||"eval-select",
       tab:screen.tab||"item",
-      ek:screen.ek||null,
+      ek:onForm?(screen.ek||null): (screen.ek||null),
       editRecId:screen.editRecId??null,
-      draft:draftDirtyRef.current?draftRef.current:null,
-      dirty:!!draftDirtyRef.current,
+      draft:keepDraft?draftRef.current:null,
+      dirty:keepDraft,
+      savedAt:Date.now(),
     };
-    try{ localStorage.setItem("pt_screen_state", JSON.stringify(payload)); }catch(e){}
+    if(typeof window.__ptWriteScreen==="function") return window.__ptWriteScreen(payload, reason||"effect");
+    try{ localStorage.setItem("pt_screen_state", JSON.stringify(payload)); localStorage.setItem("pt_screen_state_keep", JSON.stringify(payload)); return true; }catch(e){ return false; }
   };
   flushScreenRef.current=flushScreen;
-  const onScreen=(s)=>{ screenRef.current=s; flushScreenRef.current(); };
-  const onDraft=(fd,dirty)=>{
+  const onScreen=(s, reason)=>{
+    if(s&&s.dropDraft){ draftDirtyRef.current=false; draftRef.current=null; }
+    screenRef.current={
+      patientId:s.patientId||null,
+      rv:s.rv||"eval-select",
+      tab:s.tab||"item",
+      ek:s.ek||null,
+      editRecId:s.editRecId??null,
+    };
+    const wrote=flushScreen(reason||"effect");
+    if(wrote===false && s&&s.dropDraft){
+      const prev=readScreenState();
+      if(prev&&prev.dirty){ draftDirtyRef.current=true; draftRef.current=prev.draft; }
+    }
+  };
+  const onDraft=(fd,dirty,reason)=>{
+    const prevDirty=draftDirtyRef.current;
+    const prevDraft=draftRef.current;
     draftDirtyRef.current=!!dirty;
     draftRef.current=dirty?fd:null;
-    flushScreenRef.current();
+    const wrote=flushScreen(reason||"input");
+    if(wrote===false){ draftDirtyRef.current=prevDirty; draftRef.current=prevDraft; }
   };
+  window.__ptOnBack=()=>{ stepBackRef.current(); };
+  window.__ptFlush=()=>{ flushScreenRef.current&&flushScreenRef.current("hide"); };
   const selectPatient=(p,directEvalKey=null)=>{
     setPatient(p);
     patientRef.current=p;
     if(!isTablet) setMobileViewSync("content");
+    onScreen({
+      patientId:p.id,
+      rv:directEvalKey?"eval-form":"eval-select",
+      tab:"item",
+      ek:directEvalKey||null,
+      editRecId:null,
+      dropDraft:true,
+    }, "user");
+    if(!isTablet) mobileViewRef.current="content";
     // 특정 평가 폼으로 직행
     if(directEvalKey){
       setTimeout(()=>{
@@ -2487,9 +2691,22 @@ function App(){
     if(!isTablet){
       if(mobileViewRef.current==="list") return false;
       setMobileViewSync("list");
+      onScreen({
+        patientId:patientRef.current?.id||null,
+        rv:"eval-select",
+        tab:"item",
+        ek:null,
+        editRecId:null,
+        dropDraft:true,
+      }, "user");
       return true;
     }
-    if(patientRef.current){ setPatient(null); patientRef.current=null; return true; }
+    if(patientRef.current){
+      setPatient(null);
+      patientRef.current=null;
+      onScreen({patientId:null, rv:"eval-select", tab:"item", ek:null, editRecId:null, dropDraft:true}, "user");
+      return true;
+    }
     return false;
   };
   stepBackRef.current=async()=>{
@@ -2504,21 +2721,27 @@ function App(){
       try{ handled=await contentGoBackRef.current(); }catch(e){ handled=false; }
     }
     if(handled) return;
-    if(mobileViewRef.current==="content"){ setMobileViewSync("list"); return; }
+    if(mobileViewRef.current==="content"){
+      setMobileViewSync("list");
+      onScreen({patientId:patientRef.current?.id||null, rv:"eval-select", tab:"item", ek:null, editRecId:null, dropDraft:true}, "user");
+      return;
+    }
     setShowExit(true);
   };
   requestBackRef.current=()=>{ stepBackRef.current(); };
   const cancelExit=()=>{
     allowExitRef.current=false;
+    window.__ptAllowExit=false;
     setShowExit(false);
     setExitBlocked(false);
-    if(topUpRef.current) topUpRef.current();
+    if(window.__ptTopUp) window.__ptTopUp();
   };
   const exitApp=()=>{
-    // 클릭(사용자 동작) 안에서 가드보다 한 칸 더 뒤로 간다.
-    // 안드로이드 홈 화면 앱은 문서 앞으로 넘어가면 활동이 끝난다.
-    // 데스크톱·아이폰 단독 실행은 히스토리가 첫 항목에서 멈추고 window.close도 거절하는 경우가 많다.
+    // 클릭(사용자 동작) 안에서 가드 해시보다 더 뒤로 간다.
+    // 안드로이드 홈 화면 앱은 시작 주소 밖으로 나가면 활동이 끝난다.
+    // 데스크톱·아이폰 단독 실행은 첫 항목에서 멈추고 window.close도 거절하는 경우가 많다.
     allowExitRef.current=true;
+    window.__ptAllowExit=true;
     setShowExit(false);
     guardRef.current=0;
     try{ history.go(-history.length); }catch(e){}
@@ -2527,70 +2750,25 @@ function App(){
       if(allowExitRef.current===false) return;
       if(document.visibilityState==="hidden") return;
       allowExitRef.current=false;
+      window.__ptAllowExit=false;
       setExitBlocked(true);
       setShowExit(true);
-      if(topUpRef.current) topUpRef.current();
+      if(window.__ptTopUp) window.__ptTopUp();
     }, 400);
   };
   useEffect(()=>{
-    // 화면 단계는 앱 상태가 맡는다. 히스토리에는 가드만 최대 2개 둔다.
-    // 페이지를 열 때 쌓은 pushState는 안드로이드 뒤로가기가 무시하므로,
-    // 가드는 사용자의 터치(포인터) 안에서 만든다.
-    // 스와이프가 pop을 두 번 해도, 루트에 닿으면 그 즉시 가드를 다시 넣어 문서 밖으로 나가지 않는다.
-    try{
-      if(!history.state||history.state.pt!=="guard") history.replaceState({pt:"root"}, "");
-      guardRef.current=history.state&&history.state.pt==="guard"?1:0;
-    }catch(e){}
-    const topUp=()=>{
-      if(allowExitRef.current) return;
-      let safety=0;
-      while(guardRef.current<2&&safety<2){
-        try{ history.pushState({pt:"guard"}, ""); guardRef.current++; }catch(e){ break; }
-        safety++;
-      }
-    };
-    topUpRef.current=topUp;
-    let burstTimer=0;
-    let stepping=false;
-    const onPop=()=>{
-      if(allowExitRef.current) return;
-      const onGuard=history.state&&history.state.pt==="guard";
-      if(!onGuard){
-        try{ history.pushState({pt:"guard"}, ""); }catch(e){}
-        guardRef.current=1;
-      }else{
-        guardRef.current=1;
-      }
-      clearTimeout(burstTimer);
-      burstTimer=setTimeout(async()=>{
-        if(stepping) return;
-        stepping=true;
-        try{ await stepBackRef.current(); }
-        finally{ stepping=false; }
-      }, 50);
-    };
-    const onGesture=()=>{ topUp(); };
-    const onVisibility=()=>{
-      if(document.visibilityState==="hidden") flushScreenRef.current();
-    };
-    const onHide=()=>{ flushScreenRef.current(); };
-    const onShow=(e)=>{ if(e.persisted) topUp(); };
-    window.addEventListener("pointerdown", onGesture, true);
-    window.addEventListener("touchstart", onGesture, true);
-    window.addEventListener("popstate", onPop);
-    document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("pagehide", onHide);
-    window.addEventListener("pageshow", onShow);
-    return()=>{
-      clearTimeout(burstTimer);
-      window.removeEventListener("pointerdown", onGesture, true);
-      window.removeEventListener("touchstart", onGesture, true);
-      window.removeEventListener("popstate", onPop);
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("pagehide", onHide);
-      window.removeEventListener("pageshow", onShow);
-    };
+    const s=bootNav;
+    const restored=!!(s&&s.patientId&&(s.mobileView==="content"||s.rv==="eval-form"||s.rv==="eval-history"||s.rv==="date-view"||s.dirty));
+    if(restored) showToast("이전에 작성하던 화면을 복원했습니다", 4000);
   },[]);
+  // 가로(태블릿 폭)에서 작성하다 세로로 돌리면 mobileView가 list로 남아 폼이 숨는다.
+  useEffect(()=>{
+    if(isTablet) return;
+    const s=screenRef.current||bootNav;
+    if(s && (s.rv==="eval-form"||s.rv==="eval-history"||s.rv==="date-view"||s.dirty) && mobileViewRef.current!=="content"){
+      setMobileViewSync("content");
+    }
+  },[isTablet]);
   return(
     <div className="layout-shell">
       <ConfirmDialog msg={confirmState.msg} onYes={confirmState.onYes} onNo={confirmState.onNo}/>
@@ -2618,9 +2796,20 @@ function App(){
             <div style={{display:"flex",flexDirection:"column",gap:"18px"}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
-                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.3</span>
+                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.4</span>
                   <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.10.19</span>
                   <span style={{background:"#dcfce7",color:"#16a34a",borderRadius:"5px",padding:"1px 7px",fontSize:"11px",fontWeight:600}}>최신</span>
+                </div>
+                <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  <li style={{fontSize:"13px",color:"#334155"}}>안드로이드 홈 화면 앱에서 하단 뒤로 버튼으로 앱이 꺼져도, 다시 열면 작성 중이던 환자·화면·입력 내용이 그대로입니다.</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>하단 뒤로 버튼이 같은 주소의 기록을 무시하고 앱을 끄던 문제를 고쳤습니다. 화면을 터치하면 주소 뒤 표시가 바뀌는 뒤로가기 기록이 생깁니다.</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>화면 오른쪽 위에 버전 번호가 항상 보입니다.</li>
+                </ul>
+              </div>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
+                  <span style={{background:"#64748b",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.3</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.10.19</span>
                 </div>
                 <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
                   <li style={{fontSize:"13px",color:"#334155"}}>안드로이드·아이폰의 뒤로가기(가장자리 스와이프, 하단 뒤로 버튼)가 앱을 바로 끄지 않고 한 화면씩 이동합니다. 작성 중인 평가는 자동저장됩니다.</li>
@@ -2666,9 +2855,9 @@ function App(){
               <div style={{fontSize:"18px",fontWeight:800,color:"#1e293b",marginBottom:"6px"}}>{APP_VERSION} 업데이트</div>
               <div style={{fontSize:"13px",color:"#64748b",lineHeight:1.6}}>앱이 업데이트되었어요.<br/>주요 변경사항을 확인해보세요.</div>
             </div>
-            <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
-              <li style={{fontSize:"13px",color:"#334155"}}>뒤로가기는 한 화면씩 이동하고, 첫 화면에서는 종료를 확인합니다</li>
-              <li style={{fontSize:"13px",color:"#334155"}}>다른 앱으로 나갔다가 돌아와도 작성 중인 화면이 유지됩니다</li>
+              <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
+              <li style={{fontSize:"13px",color:"#334155"}}>앱이 꺼져도 작성 중이던 화면과 내용이 다시 열립니다</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>화면 오른쪽 위에서 버전 번호를 확인할 수 있습니다</li>
             </ul>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);setShowReleaseNotes(true);}} style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>자세히 보기</button>
@@ -2689,6 +2878,7 @@ function App(){
           )}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:"5px",flexShrink:0}}>
+          <span id="app-version" style={{fontSize:"11px",fontWeight:800,color:"#1d4ed8",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"999px",padding:"3px 8px",flexShrink:0,letterSpacing:"0.2px"}}>{APP_VERSION}</span>
           {(!isTablet||mobileView!=="content")&&(
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"3px"}}>
             <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
@@ -2742,14 +2932,16 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
     });
     return init;
   };
-  const [fd,setFd]=useState(()=>initialData?JSON.parse(JSON.stringify(initialData)):buildInit());
+  const [fd,setFdState]=useState(()=>initialData?JSON.parse(JSON.stringify(initialData)):buildInit());
+  const fdRef=React.useRef(fd);
+  fdRef.current=fd;
   const [isDirty,setIsDirty]=useState(!!restoreDirty);
   const restoreDirtyOnce=React.useRef(false);
   if(restoreDirty&&!restoreDirtyOnce.current){
     restoreDirtyOnce.current=true;
     if(dirtyRef) dirtyRef.current=true;
   }
-  useEffect(()=>{ if(onDraft) onDraft(fd, isDirty); },[fd,isDirty]);
+  useEffect(()=>{ if(onDraft) onDraft(fd, isDirty, "effect"); },[fd,isDirty]);
   const [saveTried,setSaveTried]=useState(false);
   const [showBbsTimer,setShowBbsTimer]=useState(false);
   const [showFgaTimer,setShowFgaTimer]=useState(false);
@@ -2871,11 +3063,21 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
     }catch(e){}
   };
   const markDirty=()=>{ setIsDirty(true); if(dirtyRef) dirtyRef.current=true; };
-  const setF=(id,val)=>{markDirty();setFd(prev=>({...prev,[id]:val}));};
-  const setCell=(tid,ri,ck,val)=>{markDirty();setFd(prev=>{const arr=[...(prev[tid]||[])];arr[ri]={...arr[ri],[ck]:val};return{...prev,[tid]:arr};});};
-  const setBbs=(ri,score)=>{markDirty();setFd(prev=>{const arr=[...(prev["_bbs"]||BBS_ITEMS.map(()=>null))];arr[ri]=score;return{...prev,"_bbs":arr};});};
-  const setFga=(ri,score)=>{markDirty();setFd(prev=>{const arr=[...(prev["_fga"]||FGA_ITEMS.map(()=>null))];arr[ri]=score;return{...prev,"_fga":arr};});};
-  const setFogq=(ri,score)=>{markDirty();setFd(prev=>{const arr=[...(prev["_fogq"]||FOGQ_ITEMS.map(()=>null))];arr[ri]=score;return{...prev,"_fogq":arr};});};
+  // 입력 핸들러가 끝나는 즉시 저장한다. useEffect까지 기다리면 안드로이드가 앱을 죽일 수 있다.
+  const editFd=(mutator)=>{
+    const prev=fdRef.current;
+    const next=typeof mutator==="function"?mutator(prev):mutator;
+    fdRef.current=next;
+    setIsDirty(true);
+    if(dirtyRef) dirtyRef.current=true;
+    if(onDraft) onDraft(next, true, "input");
+    setFdState(next);
+  };
+  const setF=(id,val)=>editFd(prev=>({...prev,[id]:val}));
+  const setCell=(tid,ri,ck,val)=>editFd(prev=>{const arr=[...(prev[tid]||[])];arr[ri]={...arr[ri],[ck]:val};return{...prev,[tid]:arr};});
+  const setBbs=(ri,score)=>editFd(prev=>{const arr=[...(prev["_bbs"]||BBS_ITEMS.map(()=>null))];arr[ri]=score;return{...prev,"_bbs":arr};});
+  const setFga=(ri,score)=>editFd(prev=>{const arr=[...(prev["_fga"]||FGA_ITEMS.map(()=>null))];arr[ri]=score;return{...prev,"_fga":arr};});
+  const setFogq=(ri,score)=>editFd(prev=>{const arr=[...(prev["_fogq"]||FOGQ_ITEMS.map(()=>null))];arr[ri]=score;return{...prev,"_fogq":arr};});
 
   // 타이머 상태: {trial1: {running, startTime, elapsed}, ...}
   const [timers,setTimers]=useState({trial1:{running:false,elapsed:0},trial2:{running:false,elapsed:0},trial3:{running:false,elapsed:0}});
@@ -2898,8 +3100,12 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
     setTimers(prev=>{
       const elapsed=prev[id].elapsed;
       const val=elapsed.toFixed(2);
-      markDirty();
-      setFd(p=>({...p,[id]:val}));
+      const next={...fdRef.current,[id]:val};
+      fdRef.current=next;
+      setIsDirty(true);
+      if(dirtyRef) dirtyRef.current=true;
+      if(onDraft) onDraft(next, true, "input");
+      setFdState(next);
       return {...prev,[id]:{running:false,elapsed}};
     });
   };
@@ -2923,9 +3129,19 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
       if(vals.length>0){
         const avg=(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2);
         const speed=(10/parseFloat(avg)).toFixed(3);
-        setFd(prev=>({...prev,avg,speed,steps_avg}));
+        setFdState(prev=>{
+          const next={...prev,avg,speed,steps_avg};
+          fdRef.current=next;
+          if(dirtyRef&&dirtyRef.current&&onDraft) onDraft(next, true, "input");
+          return next;
+        });
       } else {
-        setFd(prev=>({...prev,avg:"",speed:"",steps_avg}));
+        setFdState(prev=>{
+          const next={...prev,avg:"",speed:"",steps_avg};
+          fdRef.current=next;
+          if(dirtyRef&&dirtyRef.current&&onDraft) onDraft(next, true, "input");
+          return next;
+        });
       }
     }
   },[fd.trial1,fd.trial2,fd.trial3,fd.steps1,fd.steps2,fd.steps3]);
@@ -2974,6 +3190,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
     }
     setIsDirty(false);
     if(dirtyRef) dirtyRef.current=false;
+    if(onDraft) onDraft(final, false, "user");
     onSave(final,false);
   };
   const handleAutoSave=()=>{
@@ -2990,6 +3207,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
     }
     setIsDirty(false);
     if(dirtyRef) dirtyRef.current=false;
+    if(onDraft) onDraft(final, false, "user");
     onSave(final,true);
   };
 
@@ -3050,13 +3268,13 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
 
         if(field.type==="rom_table"){
           const romData=fd["_rom"]||{};
-          const setRom=(si,ri,side,val)=>setFd(prev=>{
+          const setRom=(si,ri,side,val)=>editFd(prev=>{
             const d={...(prev["_rom"]||{})};
             const key=si+"_"+ri;
             d[key]={...(d[key]||{}),[side]:val};
             return{...prev,"_rom":d};
           });
-          const setFingerRom=(si,ri,side,val)=>setFd(prev=>{
+          const setFingerRom=(si,ri,side,val)=>editFd(prev=>{
             const d={...(prev["_rom"]||{})};
             const key="f"+si+"_"+ri;
             d[key]={...(d[key]||{}),[side]:val};
@@ -3164,7 +3382,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
         }
         if(field.type==="mmt_sections"){
           const md=fd["_mmt"]||{};
-          const setMmt=(gi,si,ri,side,val)=>setFd(prev=>{
+          const setMmt=(gi,si,ri,side,val)=>editFd(prev=>{
             const d={...(prev["_mmt"]||{})};
             const key=gi+"_"+si+"_"+ri;
             d[key]={...(d[key]||{left:"",right:""}),[side]:val};
@@ -3173,7 +3391,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
           // 그룹 전체 일괄 적용
           const applyAll=(gi,side,val)=>{
             markDirty();
-            setFd(prev=>{
+            editFd(prev=>{
               const d={...(prev["_mmt"]||{})};
               const grp=MMT_SECTIONS[gi];
               grp.sections.forEach((sec,si)=>{
@@ -3450,7 +3668,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
               <DisRomTable
                 data={disData}
                 readOnly={false}
-                onChange={v=>{markDirty();setFd(prev=>({...prev,"_disrom":v}));}}
+                onChange={v=>{markDirty();editFd(prev=>({...prev,"_disrom":v}));}}
               />
             </div>
           );
@@ -3594,11 +3812,11 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                 <div style={{flex:1}}/>
                 {isBBS&&(
                   <>
-                    <button onClick={()=>{markDirty();setFd(prev=>({...prev,"_bbs":BBS_ITEMS.map(item=>item.opts[item.opts.length-1][0])}));}}
+                    <button onClick={()=>{markDirty();editFd(prev=>({...prev,"_bbs":BBS_ITEMS.map(item=>item.opts[item.opts.length-1][0])}));}}
                       style={{padding:"6px 14px",borderRadius:"9px",border:"1.5px solid #fca5a5",background:"#fef2f2",color:"#dc2626",fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
                       0점
                     </button>
-                    <button onClick={()=>{markDirty();setFd(prev=>({...prev,"_bbs":BBS_ITEMS.map(item=>item.opts[0][0])}));}}
+                    <button onClick={()=>{markDirty();editFd(prev=>({...prev,"_bbs":BBS_ITEMS.map(item=>item.opts[0][0])}));}}
                       style={{padding:"6px 14px",borderRadius:"9px",border:"1.5px solid #93c5fd",background:"#eff6ff",color:"#1d4ed8",fontSize:"13px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
                       56점
                     </button>
