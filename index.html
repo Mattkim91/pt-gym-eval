@@ -7,62 +7,57 @@
   <meta http-equiv="Expires" content="0" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <script>
-    // 파일 수정 시각을 버전으로 자동 감지 - 숫자 바꿀 필요 없음
-    fetch(location.href, {method:'HEAD', cache:'no-cache'})
-      .then(res => {
-        const lastMod = res.headers.get('last-modified') || res.headers.get('etag') || '';
-        const saved = localStorage.getItem('app_file_version');
-        if(saved && saved !== lastMod && lastMod){
-          localStorage.setItem('app_file_version', lastMod);
-          // 캐시만 삭제, 로컬스토리지 데이터는 절대 건드리지 않음
-          if('caches' in window) caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
-          if('serviceWorker' in navigator)
-            navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
-          // reload 전 데이터 백업 확인
-          const data = localStorage.getItem('pt_eval_data');
-          if(data){
-            localStorage.setItem('pt_eval_backup_latest', data);
-            const today=new Date().toISOString().slice(0,10);
-            localStorage.setItem('pt_eval_backup_date', today);
-            localStorage.setItem('pt_eval_backup_time', new Date().toISOString());
-          }
-          window.location.reload();
-        } else {
-          if(lastMod) localStorage.setItem('app_file_version', lastMod);
-        }
-      }).catch(()=>{});
-
-    // Service Worker 등록 (오프라인 지원)
-    if('serviceWorker' in navigator){
-      const swCode = `
-const CACHE = 'pt-eval-v1';
-const ASSETS = [location.pathname || '/'];
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
-});
-self.addEventListener('activate', e => {
-  e.waitUntil(clients.claim());
-});
-self.addEventListener('fetch', e => {
-  if(e.request.method !== 'GET') return;
-  e.respondWith(
-    caches.match(e.request).then(cached => {
-      const net = fetch(e.request).then(res => {
-        if(res && res.status === 200){
-          const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
-        }
-        return res;
-      }).catch(() => cached);
-      return cached || net;
-    })
-  );
-});
-`;
-      const blob = new Blob([swCode], {type:'application/javascript'});
-      const swUrl = URL.createObjectURL(blob);
-      navigator.serviceWorker.register(swUrl).catch(()=>{});
+    // 기기 로컬 달력의 오늘(YYYY-MM-DD). UTC로 자르면 한국 시간 00:00~08:59가 전날이 된다.
+    function localDateStr(d){
+      d = d || new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return y + "-" + m + "-" + day;
     }
+
+    function registerAppWorker(){
+      if(!("serviceWorker" in navigator)) return;
+      navigator.serviceWorker.register("sw.js", { scope: "./", updateViaCache: "none" }).catch(()=>{});
+    }
+
+    // 파일 수정 시각을 버전으로 자동 감지 - 숫자 바꿀 필요 없음
+    // HEAD는 서비스워커가 가로채지 않는다(GET만 처리). 온라인이면 새 파일을 받고,
+    // 저장된 버전과 다르면 앱 캐시만 비운 뒤 한 번 새로고침한다.
+    // sw.js는 해제하지 않는다. 네트워크 우선 워커가 새 파일을 다시 담는다.
+    fetch(location.href, { method: "HEAD", cache: "no-cache" })
+      .then(res => {
+        const lastMod = res.headers.get("last-modified") || res.headers.get("etag") || "";
+        const saved = localStorage.getItem("app_file_version");
+        if(saved && saved !== lastMod && lastMod){
+          if(sessionStorage.getItem("pt_shell_reload") === lastMod){
+            registerAppWorker();
+            return;
+          }
+          sessionStorage.setItem("pt_shell_reload", lastMod);
+          localStorage.setItem("app_file_version", lastMod);
+          const data = localStorage.getItem("pt_eval_data");
+          if(data){
+            localStorage.setItem("pt_eval_backup_latest", data);
+            localStorage.setItem("pt_eval_backup_date", localDateStr());
+            localStorage.setItem("pt_eval_backup_time", new Date().toISOString());
+          }
+          const finish = () => { window.location.reload(); };
+          const tasks = [];
+          if("caches" in window) tasks.push(caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))));
+          if("serviceWorker" in navigator){
+            tasks.push(navigator.serviceWorker.getRegistrations().then(regs => Promise.all(regs.map(r => {
+              const script = (r.active && r.active.scriptURL) || (r.installing && r.installing.scriptURL) || (r.waiting && r.waiting.scriptURL) || "";
+              if(script.indexOf("blob:") === 0) return r.unregister();
+              return Promise.resolve();
+            }))));
+          }
+          Promise.all(tasks).then(finish, finish);
+        } else {
+          if(lastMod) localStorage.setItem("app_file_version", lastMod);
+          registerAppWorker();
+        }
+      }).catch(() => { registerAppWorker(); });
   </script>
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -72,10 +67,9 @@ self.addEventListener('fetch', e => {
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="vendor/react.production.min.js"></script>
+  <script src="vendor/react-dom.production.min.js"></script>
+  <script src="vendor/babel.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     :root { color-scheme: light only; }
@@ -546,7 +540,7 @@ function saveData(d){
 
 function autoBackupOnOpen(){
   // 하루 1회만 실행 (오늘 날짜 체크)
-  const today=new Date().toISOString().slice(0,10);
+  const today=localDateStr();
   const lastBackupDate=localStorage.getItem("pt_eval_backup_date");
   if(lastBackupDate===today) return;
   try{
@@ -626,7 +620,7 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm}){
   const exportBackup=async()=>{
     const json=JSON.stringify({version:1,exportedAt:new Date().toISOString(),data:db},null,2);
     const now=new Date();
-    const dateStr=now.toISOString().slice(0,10);
+    const dateStr=localDateStr(now);
     const timeStr=now.toTimeString().slice(0,8).replace(/:/g,"-");
     const fname=`환자평가_백업_${dateStr}_${timeStr}.json`;
 
@@ -2385,7 +2379,7 @@ function App(){
       <div className="topbar">
         <div style={{display:"flex",alignItems:"center",gap:"6px",minWidth:0,flex:1}}>
           {!isTablet&&mobileView==="content"&&(
-            <button onClick={()=>setMobileViewSync("list")} style={{background:"none",border:"none",padding:"6px 6px 6px 0",color:"#475569",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}><IcoBack/></button>
+            <button onClick={()=>{ if(contentGoBackRef.current) contentGoBackRef.current(); }} style={{background:"none",border:"none",padding:"6px 6px 6px 0",color:"#475569",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}><IcoBack/></button>
           )}
           {!isTablet&&mobileView==="content"&&patient?(
             <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{patient.name}</span>
@@ -2405,7 +2399,7 @@ function App(){
               const d=localStorage.getItem("pt_eval_backup_date");
               const bt=localStorage.getItem("pt_eval_backup_time");
               if(!d) return <span style={{fontSize:"9px",color:"#ef4444",fontWeight:600}}>백업 없음</span>;
-              const today=new Date().toISOString().slice(0,10);
+              const today=localDateStr();
               const days=Math.floor((new Date(today)-new Date(d))/(1000*60*60*24));
               const color=days>=7?"#ef4444":days>=3?"#f59e0b":"#94a3b8";
               const timeStr=bt?new Date(bt).toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}):"";
@@ -2429,7 +2423,7 @@ function App(){
 }
 
 function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,useConfirm,onScoreChange}){
-  const todayStr=new Date().toISOString().slice(0,10);
+  const todayStr=localDateStr();
   const buildInit=()=>{
     const init={};
     (template?.fields||[]).forEach(f=>{
@@ -2661,7 +2655,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
     setSaveTried(true);
     const final={...fd};
     // 검사일 미입력 시 오늘 날짜로 자동 채움
-    if(final.date===undefined||final.date==="") final.date=new Date().toISOString().slice(0,10);
+    if(final.date===undefined||final.date==="") final.date=localDateStr();
     if(template?.fields?.find(f=>f.type==="bbs_full")){
       final.bbs_total=(fd["_bbs"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
     }
