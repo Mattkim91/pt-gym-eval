@@ -2806,6 +2806,7 @@ function App(){
                 <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
                   <li style={{fontSize:"13px",color:"#334155"}}>저장 안내 문구가 휴대폰에서 한 글자씩 세로로 줄바꿈되던 문제를 고쳤습니다. 문구는 한 줄로 보이고, 다음 평가 버튼은 그 아래에 있습니다.</li>
                   <li style={{fontSize:"13px",color:"#334155"}}>안내 문구가 아래쪽 + 버튼과 뒤로가기 버튼에 가리지 않습니다.</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>첫 화면 제목 옆의 버전 번호를 빼서, 오른쪽 위 배지에만 버전이 보입니다.</li>
                 </ul>
               </div>
               <div>
@@ -2871,6 +2872,7 @@ function App(){
               <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
               <li style={{fontSize:"13px",color:"#334155"}}>저장 안내 문구가 한 줄로 보입니다</li>
               <li style={{fontSize:"13px",color:"#334155"}}>다음 평가 버튼은 안내 문구 아래에 나옵니다</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>첫 화면의 버전 번호는 오른쪽 위에만 보입니다</li>
             </ul>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);setShowReleaseNotes(true);}} style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>자세히 보기</button>
@@ -2887,7 +2889,7 @@ function App(){
           {!isTablet&&mobileView==="content"&&patient?(
             <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{patient.name}</span>
           ):(
-            <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b"}}>환자 평가 관리 <span style={{fontSize:"12px",fontWeight:500,color:"#94a3b8"}}>{APP_VERSION}</span></span>
+            <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b"}}>환자 평가 관리</span>
           )}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:"5px",flexShrink:0}}>
