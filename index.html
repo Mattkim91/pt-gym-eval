@@ -2806,7 +2806,7 @@ function App(){
                 <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
                   <li style={{fontSize:"13px",color:"#334155"}}>저장 안내 문구가 휴대폰에서 한 글자씩 세로로 줄바꿈되던 문제를 고쳤습니다. 문구는 한 줄로 보이고, 다음 평가 버튼은 그 아래에 있습니다.</li>
                   <li style={{fontSize:"13px",color:"#334155"}}>안내 문구가 아래쪽 + 버튼과 뒤로가기 버튼에 가리지 않습니다.</li>
-                  <li style={{fontSize:"13px",color:"#334155"}}>첫 화면 제목 옆의 버전 번호를 빼서, 오른쪽 위 배지에만 버전이 보입니다.</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>버전은 오른쪽 위 배지 한 곳만 보이며, 백업·복원 버튼과 같은 줄에 맞춰져 있습니다.</li>
                 </ul>
               </div>
               <div>
@@ -2887,20 +2887,24 @@ function App(){
             <button onClick={()=>{ if(requestBackRef.current) requestBackRef.current(); }} style={{background:"none",border:"none",padding:"6px 6px 6px 0",color:"#475569",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}><IcoBack/></button>
           )}
           {!isTablet&&mobileView==="content"&&patient?(
-            <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{patient.name}</span>
+            <span style={{fontSize:"19px",fontWeight:800,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{patient.name}</span>
           ):(
-            <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b"}}>환자 평가 관리</span>
+            <span style={{fontSize:"19px",fontWeight:700,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>환자 평가 관리</span>
           )}
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:"5px",flexShrink:0}}>
-          <span id="app-version" style={{fontSize:"11px",fontWeight:800,color:"#1d4ed8",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"999px",padding:"3px 8px",flexShrink:0,letterSpacing:"0.2px"}}>{APP_VERSION}</span>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"3px",flexShrink:0,marginLeft:"8px"}}>
+          <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
+            <span id="app-version" style={{fontSize:"11px",fontWeight:800,color:"#1d4ed8",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"999px",padding:"0 8px",height:"27px",boxSizing:"border-box",display:"inline-flex",alignItems:"center",flexShrink:0,letterSpacing:"0.2px",lineHeight:1,whiteSpace:"nowrap"}}>{APP_VERSION}</span>
+            {(!isTablet||mobileView!=="content")&&(
+            <>
+              <button onClick={()=>setShowReleaseNotes(true)} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 7px",fontSize:"11px",color:"#94a3b8",cursor:"pointer",fontWeight:600,display:"inline-flex",alignItems:"center",flexShrink:0}} title="업데이트 내역"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 3v13"/><path d="M6 11l6 6 6-6"/><path d="M4 20h16"/></svg></button>
+              <button onClick={()=>document.dispatchEvent(new CustomEvent("backup-export"))} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#2563eb",cursor:"pointer",fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>⬇ 백업</button>
+              <button onClick={()=>document.dispatchEvent(new CustomEvent("backup-import"))} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#16a34a",cursor:"pointer",fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>⬆ 복원</button>
+            </>
+            )}
+          </div>
           {(!isTablet||mobileView!=="content")&&(
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"3px"}}>
-            <div style={{display:"flex",gap:"6px",alignItems:"center"}}>
-              <button onClick={()=>setShowReleaseNotes(true)} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 7px",fontSize:"11px",color:"#94a3b8",cursor:"pointer",fontWeight:600,display:"inline-flex",alignItems:"center"}} title="업데이트 내역"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 3v13"/><path d="M6 11l6 6 6-6"/><path d="M4 20h16"/></svg></button>
-              <button onClick={()=>document.dispatchEvent(new CustomEvent("backup-export"))} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#2563eb",cursor:"pointer",fontWeight:600}}>⬇ 백업</button>
-              <button onClick={()=>document.dispatchEvent(new CustomEvent("backup-import"))} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#16a34a",cursor:"pointer",fontWeight:600}}>⬆ 복원</button>
-            </div>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end"}}>
             {(()=>{
               const d=localStorage.getItem("pt_eval_backup_date");
               const bt=localStorage.getItem("pt_eval_backup_time");
