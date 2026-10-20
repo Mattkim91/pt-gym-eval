@@ -143,6 +143,55 @@
     window.addEventListener("pagehide", ptFlushHidden);
     document.addEventListener("freeze", ptFlushHidden);
 
+    function ptIsIOS(){
+      var ua=navigator.userAgent||"";
+      if(/iPad|iPhone|iPod/.test(ua)) return true;
+      if(navigator.platform==="MacIntel" && navigator.maxTouchPoints>1) return true;
+      return false;
+    }
+    function ptIsAndroid(){ return /Android/i.test(navigator.userAgent||""); }
+    function ptOnGuardEntry(){
+      try{
+        if(history.state && history.state.pt==="guard") return true;
+        return /^#pt\d+$/.test(location.hash||"");
+      }catch(e){ return false; }
+    }
+    // 종료가 확정되면 가드를 다시 쌓지 않는다. popstate도 앱 화면을 이동시키지 않는다.
+    window.__ptExiting=false;
+    var ptExitTimer=0;
+    window.__ptExitNow=function(){
+      window.__ptAllowExit=true;
+      window.__ptExiting=true;
+      try{ if(typeof window.__ptFlush==="function") window.__ptFlush(); }catch(e){}
+      // 스크립트로 연 창이 아니면 close는 무시된다. 홈 화면 WebAPK이 그 경우다.
+      try{ window.close(); }catch(e){}
+      // history.go(-history.length)는 첫 항목보다 한 칸 더 뒤를 가리켜 브라우저가 무시하거나
+      // 앱보다 앞의 문서로 나가 버린다. 가드 깊이만큼만 되감아 이 앱의 시작 주소에 멈춘다.
+      // WebAPK은 그 시작 주소가 활동의 첫 기록이므로, 다음 안드로이드 뒤로가기가 활동을 끝낸다.
+      var steps=0;
+      try{
+        if(history.state && history.state.pt==="guard") steps=history.state.n||ptGuard||0;
+        else if(ptOnGuardEntry()) steps=ptGuard||1;
+      }catch(e){}
+      if(steps>PT_GUARD_MAX) steps=PT_GUARD_MAX;
+      if(steps<0) steps=0;
+      ptGuard=0;
+      try{ if(steps) history.go(-steps); }catch(e){}
+      clearTimeout(ptExitTimer);
+      var left=steps;
+      // go가 무시된 경우에만 한 칸씩 되돌린다. 이미 시작 주소면 더 뒤로 가지 않는다.
+      var ptUnwind=function(){
+        if(!window.__ptAllowExit) return;
+        if(document.visibilityState==="hidden") return;
+        if(!ptOnGuardEntry() || left<=0) return;
+        left--;
+        try{ history.back(); }catch(e){ return; }
+        ptExitTimer=setTimeout(ptUnwind, 70);
+      };
+      ptExitTimer=setTimeout(ptUnwind, 120);
+      return {ios:ptIsIOS(), android:ptIsAndroid()};
+    };
+
     // 파일 수정 시각을 버전으로 자동 감지 - 숫자 바꿀 필요 없음
     // HEAD는 서비스워커가 가로채지 않는다(GET만 처리). 온라인이면 새 파일을 받고,
     // 저장된 버전과 다르면 앱 캐시만 비운 뒤 한 번 새로고침한다.
@@ -185,7 +234,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v8.5</title>
+  <title>환자 평가 관리 v8.6</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -614,7 +663,7 @@ const maskName=(name)=>{
   return name[0]+"O"+name.slice(2);
 };
 
-const APP_VERSION = "v8.5";
+const APP_VERSION = "v8.6";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2589,6 +2638,7 @@ function App(){
   const confirmStateRef=React.useRef({msg:null,onYes:null,onNo:null});
   const [showExit,setShowExit]=useState(false);
   const [exitBlocked,setExitBlocked]=useState(false);
+  const [exitHint,setExitHint]=useState("");
   showExitRef.current=showExit;
   showReleaseRef.current=showReleaseNotes;
   showUpdateRef.current=showUpdateBanner;
@@ -2735,29 +2785,31 @@ function App(){
   const cancelExit=()=>{
     allowExitRef.current=false;
     window.__ptAllowExit=false;
+    window.__ptExiting=false;
     setShowExit(false);
     setExitBlocked(false);
+    setExitHint("");
     if(window.__ptTopUp) window.__ptTopUp();
   };
   const exitApp=()=>{
-    // 클릭(사용자 동작) 안에서 가드 해시보다 더 뒤로 간다.
-    // 안드로이드 홈 화면 앱은 시작 주소 밖으로 나가면 활동이 끝난다.
-    // 데스크톱·아이폰 단독 실행은 첫 항목에서 멈추고 window.close도 거절하는 경우가 많다.
+    // 화면을 먼저 저장하고, 가드가 다시 쌓이지 않게 한 뒤 창을 닫는다.
+    // WebAPK은 window.close를 무시한다. 해시 기록을 시작 주소까지 되감아야
+    // 다음 안드로이드 뒤로가기가 활동을 끝낸다.
+    // 아이폰 단독 실행은 버튼으로 닫히지 않는다.
     allowExitRef.current=true;
-    window.__ptAllowExit=true;
+    const info=(window.__ptExitNow&&window.__ptExitNow())||{ios:false,android:false};
     setShowExit(false);
+    setExitBlocked(false);
+    setExitHint("");
     guardRef.current=0;
-    try{ history.go(-history.length); }catch(e){}
-    setTimeout(()=>{ try{ window.close(); }catch(e){} }, 40);
     setTimeout(()=>{
       if(allowExitRef.current===false) return;
       if(document.visibilityState==="hidden") return;
-      allowExitRef.current=false;
-      window.__ptAllowExit=false;
-      setExitBlocked(true);
+      if(info.ios) setExitHint("ios");
+      else if(info.android) setExitHint("android");
+      else setExitBlocked(true);
       setShowExit(true);
-      if(window.__ptTopUp) window.__ptTopUp();
-    }, 400);
+    }, 500);
   };
   useEffect(()=>{
     const s=bootNav;
@@ -2779,6 +2831,8 @@ function App(){
         <div style={{position:"fixed",inset:0,zIndex:10001,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.45)",padding:"20px"}}>
           <div style={{background:"#fff",borderRadius:"14px",padding:"24px 22px",maxWidth:"340px",width:"100%",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}>
             <div style={{fontSize:"15px",fontWeight:600,color:"#1e293b",marginBottom:"18px",lineHeight:1.6,textAlign:"center"}}>앱을 종료하시겠습니까? 저장하지 않은 자료는 손실될 수 있습니다</div>
+            {exitHint==="ios"&&<div style={{fontSize:"12px",color:"#64748b",lineHeight:1.5,textAlign:"center",marginBottom:"14px"}}>이 기기에서는 버튼으로 앱을 닫을 수 없습니다. 화면 아래를 위로 밀어 앱을 닫아 주세요.</div>}
+            {exitHint==="android"&&<div style={{fontSize:"12px",color:"#64748b",lineHeight:1.5,textAlign:"center",marginBottom:"14px"}}>뒤로 가기를 한 번 더 누르면 앱이 종료됩니다.</div>}
             {exitBlocked&&<div style={{fontSize:"12px",color:"#64748b",lineHeight:1.5,textAlign:"center",marginBottom:"14px"}}>이 기기에서는 버튼만으로 앱 창을 닫지 못할 수 있습니다. 홈으로 나가거나 앱 전환 화면에서 닫아 주세요.</div>}
             <div style={{display:"flex",gap:"10px"}}>
               <button onClick={cancelExit} style={{flex:1,padding:"11px",borderRadius:"9px",border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontSize:"14px",fontWeight:600,cursor:"pointer"}}>취소</button>
@@ -2799,9 +2853,19 @@ function App(){
             <div style={{display:"flex",flexDirection:"column",gap:"18px"}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
-                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.5</span>
+                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.6</span>
                   <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.10.20</span>
                   <span style={{background:"#dcfce7",color:"#16a34a",borderRadius:"5px",padding:"1px 7px",fontSize:"11px",fontWeight:600}}>최신</span>
+                </div>
+                <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  <li style={{fontSize:"13px",color:"#334155"}}>앱종료하기를 누르면 작성 중 화면을 저장하고 앱을 닫으려 합니다. 안드로이드 홈 화면 앱은 뒤로 가기를 한 번 더 누르면 종료됩니다.</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>아이폰에서는 버튼으로 닫히지 않습니다. 화면 아래를 위로 밀어 앱을 닫아 주세요.</li>
+                </ul>
+              </div>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
+                  <span style={{background:"#64748b",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.5</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.10.20</span>
                 </div>
                 <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
                   <li style={{fontSize:"13px",color:"#334155"}}>저장 안내 문구가 휴대폰에서 한 글자씩 세로로 줄바꿈되던 문제를 고쳤습니다. 문구는 한 줄로 보이고, 다음 평가 버튼은 그 아래에 있습니다.</li>
@@ -2870,9 +2934,8 @@ function App(){
               <div style={{fontSize:"13px",color:"#64748b",lineHeight:1.6}}>앱이 업데이트되었어요.<br/>주요 변경사항을 확인해보세요.</div>
             </div>
               <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
-              <li style={{fontSize:"13px",color:"#334155"}}>저장 안내 문구가 한 줄로 보입니다</li>
-              <li style={{fontSize:"13px",color:"#334155"}}>다음 평가 버튼은 안내 문구 아래에 나옵니다</li>
-              <li style={{fontSize:"13px",color:"#334155"}}>첫 화면의 버전 번호는 오른쪽 위에만 보입니다</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>앱종료하기 후 안드로이드는 뒤로 가기를 한 번 더 누르면 종료됩니다</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>아이폰은 화면 아래를 위로 밀어 앱을 닫습니다</li>
             </ul>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);setShowReleaseNotes(true);}} style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>자세히 보기</button>
