@@ -1260,10 +1260,12 @@ function TiltTable({data, onChange, readOnly}){
         <div style={{display:"flex",flexDirection:"column",gap:"8px",marginBottom:"8px"}}>
           {rows.map((row,i)=>(
             <div key={i} style={{background:i===0?"#fff7ed":"#fff",border:"1.5px solid #fde8cc",borderRadius:"10px",padding:"10px 12px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
+              {/* 각도 + 경과시간 한 줄 */}
+              <div style={{display:"flex",alignItems:"baseline",gap:"6px",marginBottom:"8px"}}>
                 <span style={{fontWeight:800,fontSize:"13px",color:"#7c2d12"}}>{row.angle||"—"}</span>
-                {row.time&&<span style={{fontSize:"11px",color:"#94a3b8"}}>{row.time}분 경과</span>}
+                {row.time&&<span style={{fontSize:"11px",color:"#94a3b8"}}>· {row.time}분</span>}
               </div>
+              {/* 수치: 각도 옆 순서대로 SBP→DBP→HR→SpO2 */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px"}}>
                 <div style={{textAlign:"center"}}>
                   <div style={{fontSize:"10px",color:"#94a3b8"}}>SBP</div>
