@@ -646,7 +646,6 @@ const DEFAULT_TEMPLATES = {
       { id:"date", label:"검사일", type:"date" },
       { id:"_tilt", label:"", type:"tilt_table" },
       { id:"comment", label:"Comment", type:"textarea", placeholder:"Comment 입력" },
-      { id:"therapist", label:"Physical Therapist", type:"text", placeholder:"담당자 이름" },
     ],
   },
 };
@@ -1310,9 +1309,12 @@ function TiltTable({data, onChange, readOnly}){
                   {TILT_ANGLES.map(a=><option key={a} value={a}>{a}</option>)}
                 </select>
               </div>
-              <div style={{width:"80px"}}>
+              <div style={{width:"90px"}}>
                 <label style={labelS}>경과(min)</label>
-                <input style={inpS} type="number" inputMode="numeric" value={row.time||""} onChange={e=>updateRow(i,"time",e.target.value)} placeholder="0"/>
+                <select value={row.time||""} onChange={e=>updateRow(i,"time",e.target.value)} style={selS}>
+                  <option value="">—</option>
+                  {[1,2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={String(n)}>{n}</option>)}
+                </select>
               </div>
               {rows.length>1&&(
                 <button onClick={()=>removeRow(i)}
