@@ -234,13 +234,14 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v8.6</title>
+  <title>환자 평가 관리 v8.7</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
-  <script src="vendor/react.production.min.js"></script>
-  <script src="vendor/react-dom.production.min.js"></script>
-  <script src="vendor/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     :root { color-scheme: light only; }
@@ -639,6 +640,15 @@ const DEFAULT_TEMPLATES = {
       { id:"memo", label:"메모", type:"textarea", placeholder:"자유롭게 입력하세요" },
     ],
   },
+  "기립경사훈련": {
+    label: "기립경사훈련 기록지",
+    fields: [
+      { id:"date", label:"검사일", type:"date" },
+      { id:"_tilt", label:"", type:"tilt_table" },
+      { id:"comment", label:"Comment", type:"textarea", placeholder:"Comment 입력" },
+      { id:"therapist", label:"Physical Therapist", type:"text", placeholder:"담당자 이름" },
+    ],
+  },
 };
 
 
@@ -663,8 +673,8 @@ const maskName=(name)=>{
   return name[0]+"O"+name.slice(2);
 };
 
-const APP_VERSION = "v8.6";
-const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장"];
+const APP_VERSION = "v8.7";
+const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장","기립경사훈련"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
   ROM:    { bg:"#edf7ee", border:"#3daa5c", text:"#1a6b35", accent:"#3daa5c" },
@@ -675,6 +685,7 @@ const EVAL_COLORS = {
   "FOG-Q":{ bg:"#fef3f2", border:"#f97316", text:"#7c2d12", accent:"#f97316" },
   "지체장애ROM":{ bg:"#f0f4ff", border:"#6366f1", text:"#312e81", accent:"#6366f1" },
   "메모장":     { bg:"#f0fdfa", border:"#0d9488", text:"#134e4a", accent:"#0d9488" },
+  "기립경사훈련":{ bg:"#fff7ed", border:"#c2410c", text:"#7c2d12", accent:"#c2410c" },
 };
 
 // 화면의 #번호는 표시용이다. 기록은 patient.id(기기마다 다른 고유값)에만 붙인다.
@@ -1220,6 +1231,153 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,dismis
   );
 }
 
+// ── 기립경사훈련 테이블 ───────────────────────────────────────────
+const TILT_ANGLES=["Supine (0°)","20°","30°","40°","45°","50°","60°","70°","80°","Recovery"];
+const TILT_SYMPTOMS=["없음","어지럼증","구토감","창백함","식은땀","실신","두통","흉통","기타"];
+
+function TiltTable({data, onChange, readOnly}){
+  const rows=Array.isArray(data)&&data.length>0 ? data : [{angle:"Supine (0°)",time:"",sbp:"",dbp:"",hr:"",spo2:"",symptoms:"없음"}];
+  const setRows=newRows=>{ if(onChange) onChange(newRows); };
+  const updateRow=(i,key,val)=>{
+    const next=rows.map((r,idx)=>idx===i?{...r,[key]:val}:r);
+    setRows(next);
+  };
+  const addRow=()=>setRows([...rows,{angle:"",time:"",sbp:"",dbp:"",hr:"",spo2:"",symptoms:"없음"}]);
+  const removeRow=i=>{ if(rows.length<=1) return; setRows(rows.filter((_,idx)=>idx!==i)); };
+
+  const inpS={fontSize:"16px",border:"1.5px solid #fdba74",borderRadius:"8px",
+    padding:"8px 10px",textAlign:"center",outline:"none",background:"#fff",
+    color:"#1e293b",width:"100%",boxSizing:"border-box"};
+  const selS={fontSize:"15px",border:"1.5px solid #fdba74",borderRadius:"8px",
+    padding:"8px 10px",background:"#fff",color:"#1e293b",outline:"none",
+    width:"100%",boxSizing:"border-box"};
+  const labelS={fontSize:"11px",fontWeight:700,color:"#92400e",marginBottom:"4px",display:"block"};
+  const hasSymptom=row=>row.symptoms&&row.symptoms!=="없음";
+
+  /* readOnly: 컴팩트 카드 목록 */
+  if(readOnly){
+    return(
+      <div>
+        <div style={{display:"flex",flexDirection:"column",gap:"8px",marginBottom:"8px"}}>
+          {rows.map((row,i)=>(
+            <div key={i} style={{background:i===0?"#fff7ed":"#fff",border:"1.5px solid #fde8cc",borderRadius:"10px",padding:"10px 12px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
+                <span style={{fontWeight:800,fontSize:"13px",color:"#7c2d12"}}>{row.angle||"—"}</span>
+                {row.time&&<span style={{fontSize:"11px",color:"#94a3b8"}}>{row.time}분 경과</span>}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px"}}>
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontSize:"10px",color:"#94a3b8"}}>SBP</div>
+                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.sbp||"—"}</div>
+                </div>
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontSize:"10px",color:"#94a3b8"}}>DBP</div>
+                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.dbp||"—"}</div>
+                </div>
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontSize:"10px",color:"#94a3b8"}}>HR</div>
+                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.hr||"—"}</div>
+                </div>
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontSize:"10px",color:"#94a3b8"}}>SpO2</div>
+                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.spo2?row.spo2+"%":"—"}</div>
+                </div>
+              </div>
+              {hasSymptom(row)&&(
+                <div style={{marginTop:"6px",display:"inline-block",background:"#fee2e2",color:"#c2410c",borderRadius:"6px",padding:"2px 8px",fontSize:"12px",fontWeight:700}}>
+                  ⚠ {row.symptoms}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  /* edit: 카드 방식 입력 */
+  return(
+    <div>
+      <div style={{display:"flex",flexDirection:"column",gap:"10px",marginBottom:"10px"}}>
+        {rows.map((row,i)=>(
+          <div key={i} style={{background:"#fffbf7",border:"1.5px solid #fde8cc",borderRadius:"12px",padding:"12px 14px"}}>
+            {/* 헤더: 각도 + 삭제 */}
+            <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"10px"}}>
+              <div style={{flex:1}}>
+                <label style={labelS}>각도</label>
+                <select value={row.angle||""} onChange={e=>updateRow(i,"angle",e.target.value)} style={selS}>
+                  <option value="">선택</option>
+                  {TILT_ANGLES.map(a=><option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+              <div style={{width:"80px"}}>
+                <label style={labelS}>경과(min)</label>
+                <input style={inpS} type="number" inputMode="numeric" value={row.time||""} onChange={e=>updateRow(i,"time",e.target.value)} placeholder="0"/>
+              </div>
+              {rows.length>1&&(
+                <button onClick={()=>removeRow(i)}
+                  style={{marginTop:"16px",background:"none",border:"1px solid #fca5a5",borderRadius:"6px",padding:"6px 8px",cursor:"pointer",color:"#dc2626",fontSize:"14px",lineHeight:1,flexShrink:0}}>✕</button>
+              )}
+            </div>
+            {/* 혈압·맥박·SpO2 2열 */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"8px"}}>
+              <div>
+                <label style={labelS}>SBP (mmHg)</label>
+                <input style={inpS} type="number" inputMode="numeric" value={row.sbp||""} onChange={e=>updateRow(i,"sbp",e.target.value)} placeholder="—"/>
+              </div>
+              <div>
+                <label style={labelS}>DBP (mmHg)</label>
+                <input style={inpS} type="number" inputMode="numeric" value={row.dbp||""} onChange={e=>updateRow(i,"dbp",e.target.value)} placeholder="—"/>
+              </div>
+              <div>
+                <label style={labelS}>HR (bpm)</label>
+                <input style={inpS} type="number" inputMode="numeric" value={row.hr||""} onChange={e=>updateRow(i,"hr",e.target.value)} placeholder="—"/>
+              </div>
+              <div>
+                <label style={labelS}>SpO2 (%)</label>
+                <input style={inpS} type="number" inputMode="numeric" value={row.spo2||""} onChange={e=>updateRow(i,"spo2",e.target.value)} placeholder="—"/>
+              </div>
+            </div>
+            {/* 증상 */}
+            <div>
+              <label style={labelS}>증상</label>
+              <select value={row.symptoms||"없음"} onChange={e=>updateRow(i,"symptoms",e.target.value)}
+                style={{...selS,color:hasSymptom(row)?"#c2410c":"#1e293b",fontWeight:hasSymptom(row)?700:400}}>
+                {TILT_SYMPTOMS.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+        ))}
+      </div>
+      <button onClick={addRow}
+        style={{width:"100%",background:"#fff7ed",border:"1.5px dashed #fdba74",borderRadius:"10px",padding:"10px",cursor:"pointer",color:"#c2410c",fontSize:"13px",fontWeight:700,marginBottom:"10px"}}>
+        + 단계 추가
+      </button>
+
+      {/* 참고사항 */}
+      <div style={{marginTop:"12px",padding:"10px 12px",background:"#fffbf7",border:"1px solid #fed7aa",borderRadius:"8px",fontSize:"11px",color:"#7c2d12"}}>
+        <div style={{fontWeight:700,marginBottom:"5px",fontSize:"12px"}}>★ 참고사항</div>
+        <div style={{marginBottom:"3px"}}>• 기립저혈압: 기립 후 3분 이내 수축기 혈압이 20mmHg 이상 또는 확장기 혈압이 10mmHg 이상 감소할 경우</div>
+        <div style={{marginBottom:"3px"}}>• 활력징후 및 증상이 심할 경우 즉시 훈련을 중단하고 의사에게 보고</div>
+        <div>• SpO2 90% 이하, HR 40 이하 또는 130 이상, SBP 80 이하 또는 180 이상 시 훈련 중지</div>
+      </div>
+
+      {/* 기립경사훈련 시행 절차 */}
+      <div style={{marginTop:"10px",padding:"10px 12px",background:"#fef9f0",border:"1px solid #fde8cc",borderRadius:"8px",fontSize:"11px",color:"#92400e"}}>
+        <div style={{fontWeight:700,marginBottom:"5px",fontSize:"12px"}}>★ 기립경사훈련 시행 절차</div>
+        <div style={{lineHeight:1.7}}>
+          <div>① 환자에게 훈련 목적 및 절차 설명 후 안전벨트 착용</div>
+          <div>② Supine 상태에서 기저치(혈압·맥박·SpO2) 측정 후 기록</div>
+          <div>③ 설정 각도로 테이블을 기울이며 단계별 활력징후 및 증상 모니터링</div>
+          <div>④ 목표 각도(통상 60~80°) 도달 후 처방 시간 유지</div>
+          <div>⑤ 훈련 종료 후 Recovery(Supine) 상태 활력징후 재측정</div>
+          <div>⑥ 이상 증상 발생 시 즉시 중단 → 의사 보고 → 기록 작성</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 날짜별 한눈에 보기 ───────────────────────────────────────────
 function buildPrintHtml(patient, date, items, templates){
   const displayName = patient.name;
@@ -1336,6 +1494,39 @@ function buildPrintHtml(patient, date, items, templates){
           </div>`;
         });
         body+=`</div>`;
+      } else if(field.type==="tilt_table"){
+        const rows=Array.isArray(val)&&val.length>0?val:[];
+        if(rows.length>0){
+          body+=`<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;">
+            <thead><tr>
+              <th style="background:#fff7ed;padding:5px 4px;border:1px solid #fed7aa;color:#7c2d12;text-align:center;font-weight:700;">각도</th>
+              <th style="background:#fff7ed;padding:5px 4px;border:1px solid #fed7aa;color:#7c2d12;text-align:center;font-weight:700;">경과시간(min)</th>
+              <th style="background:#fff7ed;padding:5px 4px;border:1px solid #fed7aa;color:#7c2d12;text-align:center;font-weight:700;">SBP</th>
+              <th style="background:#fff7ed;padding:5px 4px;border:1px solid #fed7aa;color:#7c2d12;text-align:center;font-weight:700;">DBP</th>
+              <th style="background:#fff7ed;padding:5px 4px;border:1px solid #fed7aa;color:#7c2d12;text-align:center;font-weight:700;">HR(bpm)</th>
+              <th style="background:#fff7ed;padding:5px 4px;border:1px solid #fed7aa;color:#7c2d12;text-align:center;font-weight:700;">SpO2(%)</th>
+              <th style="background:#fff7ed;padding:5px 4px;border:1px solid #fed7aa;color:#7c2d12;text-align:center;font-weight:700;">증상</th>
+            </tr></thead><tbody>`;
+          rows.forEach((row,i)=>{
+            const symColor=(row.symptoms&&row.symptoms!=="없음")?"color:#c2410c;font-weight:700":"";
+            body+=`<tr style="background:${i%2===0?"#fffbf7":"#fff"}">
+              <td style="padding:4px;border:1px solid #fde8cc;text-align:center;font-weight:600;color:#7c2d12;">${row.angle||"—"}</td>
+              <td style="padding:4px;border:1px solid #fde8cc;text-align:center;">${row.time||"—"}</td>
+              <td style="padding:4px;border:1px solid #fde8cc;text-align:center;font-weight:600;">${row.sbp||"—"}</td>
+              <td style="padding:4px;border:1px solid #fde8cc;text-align:center;font-weight:600;">${row.dbp||"—"}</td>
+              <td style="padding:4px;border:1px solid #fde8cc;text-align:center;font-weight:600;">${row.hr||"—"}</td>
+              <td style="padding:4px;border:1px solid #fde8cc;text-align:center;">${row.spo2||"—"}</td>
+              <td style="padding:4px;border:1px solid #fde8cc;text-align:center;${symColor}">${row.symptoms||"없음"}</td>
+            </tr>`;
+          });
+          body+=`</tbody></table>`;
+          body+=`<div style="margin-bottom:6px;padding:8px 10px;background:#fffbf7;border:1px solid #fed7aa;border-radius:6px;font-size:10px;color:#7c2d12;">
+            <strong>★ 참고사항</strong><br/>
+            • 기립저혈압: 기립 후 3분 이내 수축기 혈압 20mmHg↑ 또는 확장기 혈압 10mmHg↑ 감소<br/>
+            • 활력징후/증상 심할 경우 즉시 중단 후 의사 보고<br/>
+            • SpO2 90% 이하, HR 40↓/130↑, SBP 80↓/180↑ 시 훈련 중지
+          </div>`;
+        }
       } else if(field.type==="toggle"||field.type==="number"||field.type==="number_auto"||field.type==="text"){
         if(val||val===0) body+=`<div style="margin-bottom:4px;"><span style="color:#94a3b8;font-size:11px;min-width:80px;display:inline-block;">${field.label}</span><span style="font-weight:600;">${val}</span></div>`;
       } else if(field.type==="textarea"&&val){
@@ -2025,6 +2216,14 @@ function RecordSummary({evalKey,data,col,templates}){
           return(
             <div key={field.id}>
               <DisRomTable data={val||{}} readOnly={true}/>
+            </div>
+          );
+        }
+
+        if(field.type==="tilt_table"){
+          return(
+            <div key={field.id}>
+              <TiltTable data={val||[]} readOnly={true}/>
             </div>
           );
         }
@@ -2853,9 +3052,18 @@ function App(){
             <div style={{display:"flex",flexDirection:"column",gap:"18px"}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
-                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.6</span>
-                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.10.20</span>
+                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.7</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.10.24</span>
                   <span style={{background:"#dcfce7",color:"#16a34a",borderRadius:"5px",padding:"1px 7px",fontSize:"11px",fontWeight:600}}>최신</span>
+                </div>
+                <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  <li style={{fontSize:"13px",color:"#334155"}}>기립경사훈련 기록지 추가 — 각도·경과시간·혈압·맥박·SpO2·증상 단계별 기록, 참고사항 및 시행 절차 포함</li>
+                </ul>
+              </div>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
+                  <span style={{background:"#64748b",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.6</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.10.20</span>
                 </div>
                 <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
                   <li style={{fontSize:"13px",color:"#334155"}}>앱종료하기를 누르면 작성 중 화면을 저장하고 앱을 닫으려 합니다. 안드로이드 홈 화면 앱은 뒤로 가기를 한 번 더 누르면 종료됩니다.</li>
@@ -2934,8 +3142,7 @@ function App(){
               <div style={{fontSize:"13px",color:"#64748b",lineHeight:1.6}}>앱이 업데이트되었어요.<br/>주요 변경사항을 확인해보세요.</div>
             </div>
               <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
-              <li style={{fontSize:"13px",color:"#334155"}}>앱종료하기 후 안드로이드는 뒤로 가기를 한 번 더 누르면 종료됩니다</li>
-              <li style={{fontSize:"13px",color:"#334155"}}>아이폰은 화면 아래를 위로 밀어 앱을 닫습니다</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>기립경사훈련 기록지 추가 — 각도별 혈압·맥박·SpO2·증상 단계 기록</li>
             </ul>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);setShowReleaseNotes(true);}} style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>자세히 보기</button>
@@ -3008,6 +3215,7 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
       else if(f.type==="fogq_full") init[f.id]=FOGQ_ITEMS.map(()=>null);
       else if(f.type==="rom_table") init[f.id]={};
       else if(f.type==="disrom_table") init[f.id]={};
+      else if(f.type==="tilt_table") init[f.id]=[{angle:"Supine (0°)",time:"",sbp:"",dbp:"",hr:"",spo2:"",symptoms:"없음"}];
       else if(f.type==="date") init[f.id]=todayStr;
       else if(f.type==="toggle") init[f.id]=f.id==="test_failure"?"":f.options?.[0]||"";
       else init[f.id]="";
@@ -3751,6 +3959,19 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                 data={disData}
                 readOnly={false}
                 onChange={v=>{markDirty();editFd(prev=>({...prev,"_disrom":v}));}}
+              />
+            </div>
+          );
+        }
+
+        if(field.type==="tilt_table"){
+          const tiltData=fd["_tilt"]||[{angle:"Supine (0°)",time:"",sbp:"",dbp:"",hr:"",spo2:"",symptoms:"없음"}];
+          return(
+            <div key={field.id}>
+              <TiltTable
+                data={tiltData}
+                readOnly={false}
+                onChange={v=>{markDirty();editFd(prev=>({...prev,"_tilt":v}));}}
               />
             </div>
           );
