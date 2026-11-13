@@ -82,17 +82,13 @@
     // 폼 → 기록 → 항목 → 목록 → 종료확인까지 한 번씩 막을 깊이.
     // 사용자 동작 한 번에 해시를 여러 개 넣는다. WebAPK은 그중 실제 주소가 바뀐 항목만 뒤로가기로 센다.
     var PT_GUARD_MAX=4;
-    var PT_EXIT_KEY="pt_exit_pending";
     var ptGuard=0;
-    window.__ptAllowExit=false;
+    // v8.8이 남겨 둔 종료 표시는 다음 실행의 가드를 막으므로 지운다.
+    try{ sessionStorage.removeItem("pt_exit_pending"); }catch(e){}
+    window.__ptHoldExit=false;
     function ptBaseUrl(){ return location.pathname+location.search; }
     function ptGuardUrl(n){ return ptBaseUrl()+"#pt"+n; }
-    function ptExitPending(){
-      try{ return sessionStorage.getItem(PT_EXIT_KEY)==="1"; }catch(e){ return false; }
-    }
-    function ptTopUp(){
-      if(window.__ptAllowExit || ptExitPending()) return;
-      if(navigator.userActivation && navigator.userActivation.isActive===false) return;
+    function ptPushGuards(){
       var n=0;
       while(ptGuard<PT_GUARD_MAX && n<PT_GUARD_MAX){
         try{
@@ -102,18 +98,21 @@
         n++;
       }
     }
+    function ptTopUp(){
+      if(window.__ptHoldExit) return;
+      if(window.__ptNeedArm){ window.__ptNeedArm=false; ptGuard=0; }
+      if(navigator.userActivation && navigator.userActivation.isActive===false) return;
+      ptPushGuards();
+    }
     window.__ptTopUp=ptTopUp;
     try{
-      if(ptExitPending()){
-        window.__ptAllowExit=true;
-        window.__ptExiting=true;
-        if(location.hash) history.replaceState({pt:"root"}, "", ptBaseUrl());
-      }else if(history.state && history.state.pt==="guard") ptGuard=history.state.n||1;
+      if(history.state && history.state.pt==="guard") ptGuard=history.state.n||1;
       else history.replaceState({pt:"root"}, "", ptBaseUrl());
     }catch(e){}
     var ptBurst=0, ptStepping=false;
     function ptOnPop(){
-      if(window.__ptAllowExit || ptExitPending()) return;
+      // 종료 안내 2초 동안은 해시를 다시 넣지 않는다. 다음 뒤로가기가 첫 기록에서 앱을 끝낸다.
+      if(window.__ptHoldExit) return;
       var onGuard=history.state && history.state.pt==="guard";
       if(!onGuard){
         try{ history.pushState({pt:"guard", n:1}, "", ptGuardUrl(1)); }catch(e){}
@@ -142,17 +141,12 @@
     // touchstart는 사용자 활성화가 없을 수 있어 ptTopUp이 그냥 돌아간다.
     // click/touchend는 WebAPK 하단 뒤로 버튼이 세는 제스처다.
     var PT_ARM_EVENTS=["pointerdown","mousedown","touchstart","touchend","click","keydown","input"];
-    function ptOnPageShow(e){ if(e.persisted && !ptExitPending()) ptTopUp(); }
+    function ptOnPageShow(e){ if(e.persisted && !window.__ptHoldExit) ptTopUp(); }
     function ptInstallGuards(){
-      if(window.__ptAllowExit || ptExitPending()) return;
+      if(window.__ptHoldExit) return;
       PT_ARM_EVENTS.forEach(function(ev){ window.addEventListener(ev, ptArm, true); });
       window.addEventListener("popstate", ptOnPop);
       window.addEventListener("pageshow", ptOnPageShow);
-    }
-    function ptRemoveGuards(){
-      PT_ARM_EVENTS.forEach(function(ev){ window.removeEventListener(ev, ptArm, true); });
-      window.removeEventListener("popstate", ptOnPop);
-      window.removeEventListener("pageshow", ptOnPageShow);
     }
     ptInstallGuards();
     function ptFlushHidden(){ if(typeof window.__ptFlush==="function") window.__ptFlush(); }
@@ -173,40 +167,33 @@
         return /^#pt\d+$/.test(location.hash||"");
       }catch(e){ return false; }
     }
-    // 종료가 확정되면 이 세션에서는 가드를 다시 만들지 않는다.
-    // 메모리 플래그만 쓰면 뒤로가기 도중 문서가 다시 열릴 때 풀리므로 sessionStorage에 둔다.
-    if(!ptExitPending()) window.__ptExiting=false;
-    var ptExitTimer=0;
-    window.__ptExitNow=function(){
+    // 환자 목록에서 첫 뒤로가기. 가드를 비워 첫 기록에 두고, 2초 뒤에만 다시 쌓는다.
+    var ptHoldTimer=0;
+    function ptGuardSteps(){
+      try{
+        if(history.state && history.state.pt==="guard") return history.state.n||ptGuard||0;
+        if(/^#pt\d+$/.test(location.hash||"")) return ptGuard||1;
+      }catch(e){}
+      return 0;
+    }
+    window.__ptArmExit=function(){
       try{ if(typeof window.__ptFlush==="function") window.__ptFlush(); }catch(e){}
-      window.__ptAllowExit=true;
-      window.__ptExiting=true;
+      window.__ptHoldExit=true;
+      var steps=ptGuardSteps();
+      if(steps>PT_GUARD_MAX) steps=PT_GUARD_MAX;
       ptGuard=0;
-      try{ sessionStorage.setItem(PT_EXIT_KEY, "1"); }catch(e){}
-      // popstate/터치 리스너를 떼야 되감는 동안 해시를 다시 넣거나 종료 창을 다시 열지 않는다.
-      ptRemoveGuards();
-      try{ window.close(); }catch(e){}
-      var base=ptBaseUrl();
-      try{ history.replaceState({pt:"root"}, "", base); }catch(e){}
-      try{ if(location.hash) location.replace(base); }catch(e){}
-      // 첫 기록까지 되돌린다. WebAPK은 그 기록이 활동의 시작이므로 다음 하단 뒤로가기가 앱을 끝낸다.
-      // length 전체를 빼면 첫 항목보다 한 칸 뒤를 가리켜 무시된다.
-      var steps=0;
-      try{ steps=Math.max(0, (history.length||1)-1); }catch(e){}
-      if(steps>30) steps=30;
       try{ if(steps) history.go(-steps); }catch(e){}
-      clearTimeout(ptExitTimer);
-      // go가 무시돼도 리스너가 없으니 한 칸씩 되감아도 해시를 다시 넣지 않는다.
-      // 이미 첫 기록이면 back은 빈 동작이라 앱 밖으로 나가지 않고, 다음 하단 뒤로가기가 활동을 끝낸다.
-      var left=steps;
-      var ptUnwind=function(){
-        if(document.visibilityState==="hidden" || left<=0) return;
-        left--;
-        try{ history.back(); }catch(e){ return; }
-        ptExitTimer=setTimeout(ptUnwind, 40);
-      };
-      ptExitTimer=setTimeout(ptUnwind, 60);
-      return {ios:ptIsIOS(), android:ptIsAndroid()};
+      clearTimeout(ptHoldTimer);
+      ptHoldTimer=setTimeout(function(){
+        window.__ptHoldExit=false;
+        if(document.visibilityState==="hidden") return;
+        // 사용자 동작이 없어도 다음 뒤로가기가 다시 안내가 되게 쌓는다.
+        // 안드로이드가 이 기록을 무시하면, 다음 터치는 활성화된 가드를 다시 넣는다.
+        ptGuard=0;
+        ptPushGuards();
+        window.__ptNeedArm=!(navigator.userActivation && navigator.userActivation.isActive);
+      }, 2000);
+      return {ios:ptIsIOS()};
     };
 
     // 파일 수정 시각을 버전으로 자동 감지 - 숫자 바꿀 필요 없음
@@ -251,7 +238,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v8.8</title>
+  <title>환자 평가 관리 v8.9</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -689,7 +676,7 @@ const maskName=(name)=>{
   return name[0]+"O"+name.slice(2);
 };
 
-const APP_VERSION = "v8.8";
+const APP_VERSION = "v8.9";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장","기립경사훈련"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -2852,20 +2839,12 @@ function App(){
   const screenRef=React.useRef(bootNav||null);
   const draftRef=React.useRef(bootNav&&bootNav.dirty?bootNav.draft:null);
   const draftDirtyRef=React.useRef(!!(bootNav&&bootNav.dirty));
-  const showExitRef=React.useRef(false);
   const showReleaseRef=React.useRef(false);
   const showUpdateRef=React.useRef(false);
   const confirmStateRef=React.useRef({msg:null,onYes:null,onNo:null});
-  const [showExit,setShowExit]=useState(false);
-  const [exitBlocked,setExitBlocked]=useState(false);
-  const [exitHint,setExitHint]=useState("");
-  showExitRef.current=showExit;
   showReleaseRef.current=showReleaseNotes;
   showUpdateRef.current=showUpdateBanner;
   const flushScreenRef=React.useRef(()=>{});
-  const guardRef=React.useRef(0);
-  const allowExitRef=React.useRef(false);
-  const topUpRef=React.useRef(()=>{});
   const persist=nd=>{setDb(nd);saveData(nd);};
   const [confirmState,setConfirmState]=useState({msg:null,onYes:null});
   const [toastData,setToastData]=useState({msg:"",nextEval:null});
@@ -2983,7 +2962,7 @@ function App(){
     return false;
   };
   stepBackRef.current=async()=>{
-    if(showExitRef.current){ setShowExit(false); setExitBlocked(false); return; }
+    if(window.__ptHoldExit) return;
     const confirm=confirmStateRef.current;
     if(confirm&&confirm.msg){ if(confirm.onNo) confirm.onNo(); return; }
     if(showReleaseRef.current){ setShowReleaseNotes(false); return; }
@@ -2999,31 +2978,12 @@ function App(){
       onScreen({patientId:patientRef.current?.id||null, rv:"eval-select", tab:"item", ek:null, editRecId:null, dropDraft:true}, "user");
       return;
     }
-    setShowExit(true);
+    // 환자 목록. 확인 창 없이 한 번 더 누르면 종료되게 첫 기록만 남긴다.
+    const info=(window.__ptArmExit&&window.__ptArmExit())||{ios:false};
+    if(info.ios) showToast("화면 아래를 위로 밀어 앱을 닫아 주세요.", 2000);
+    else showToast("한 번 더 누르면 앱이 종료됩니다", 2000);
   };
   requestBackRef.current=()=>{ stepBackRef.current(); };
-  const cancelExit=()=>{
-    allowExitRef.current=false;
-    window.__ptAllowExit=false;
-    window.__ptExiting=false;
-    setShowExit(false);
-    setExitBlocked(false);
-    setExitHint("");
-    if(window.__ptTopUp) window.__ptTopUp();
-  };
-  const exitApp=()=>{
-    // 화면을 저장하고 가드를 이 세션에서 끈다. 종료 확인 창은 다시 열지 않는다.
-    // WebAPK은 window.close를 무시하므로, 해시 없는 시작 주소로 되돌린 뒤
-    // 다음 안드로이드 뒤로가기가 활동을 끝내게 둔다.
-    allowExitRef.current=true;
-    const info=(window.__ptExitNow&&window.__ptExitNow())||{ios:false,android:false};
-    setShowExit(false);
-    setExitBlocked(false);
-    setExitHint("");
-    guardRef.current=0;
-    if(info.ios) showToast("화면 아래를 위로 밀어 앱을 닫아 주세요.", 5000);
-    else showToast("뒤로 가기를 한 번 더 누르면 앱이 종료됩니다.", 4000);
-  };
   useEffect(()=>{
     const s=bootNav;
     const restored=!!(s&&s.patientId&&(s.mobileView==="content"||s.rv==="eval-form"||s.rv==="eval-history"||s.rv==="date-view"||s.dirty));
@@ -3040,20 +3000,6 @@ function App(){
   return(
     <div className="layout-shell">
       <ConfirmDialog msg={confirmState.msg} onYes={confirmState.onYes} onNo={confirmState.onNo}/>
-      {showExit&&(
-        <div style={{position:"fixed",inset:0,zIndex:10001,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.45)",padding:"20px"}}>
-          <div style={{background:"#fff",borderRadius:"14px",padding:"24px 22px",maxWidth:"340px",width:"100%",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}>
-            <div style={{fontSize:"15px",fontWeight:600,color:"#1e293b",marginBottom:"18px",lineHeight:1.6,textAlign:"center"}}>앱을 종료하시겠습니까? 저장하지 않은 자료는 손실될 수 있습니다</div>
-            {exitHint==="ios"&&<div style={{fontSize:"12px",color:"#64748b",lineHeight:1.5,textAlign:"center",marginBottom:"14px"}}>이 기기에서는 버튼으로 앱을 닫을 수 없습니다. 화면 아래를 위로 밀어 앱을 닫아 주세요.</div>}
-            {exitHint==="android"&&<div style={{fontSize:"12px",color:"#64748b",lineHeight:1.5,textAlign:"center",marginBottom:"14px"}}>뒤로 가기를 한 번 더 누르면 앱이 종료됩니다.</div>}
-            {exitBlocked&&<div style={{fontSize:"12px",color:"#64748b",lineHeight:1.5,textAlign:"center",marginBottom:"14px"}}>이 기기에서는 버튼만으로 앱 창을 닫지 못할 수 있습니다. 홈으로 나가거나 앱 전환 화면에서 닫아 주세요.</div>}
-            <div style={{display:"flex",gap:"10px"}}>
-              <button onClick={cancelExit} style={{flex:1,padding:"11px",borderRadius:"9px",border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontSize:"14px",fontWeight:600,cursor:"pointer"}}>취소</button>
-              <button onClick={exitApp} style={{flex:1,padding:"11px",borderRadius:"9px",border:"none",background:"#ef4444",color:"#fff",fontSize:"14px",fontWeight:700,cursor:"pointer"}}>앱종료하기</button>
-            </div>
-          </div>
-        </div>
-      )}
       <Toast data={toastData} onAction={handleToastAction}/>
 
       {showReleaseNotes&&(
@@ -3066,9 +3012,19 @@ function App(){
             <div style={{display:"flex",flexDirection:"column",gap:"18px"}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
-                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.8</span>
+                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.9</span>
                   <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.13</span>
                   <span style={{background:"#dcfce7",color:"#16a34a",borderRadius:"5px",padding:"1px 7px",fontSize:"11px",fontWeight:600}}>최신</span>
+                </div>
+                <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  <li style={{fontSize:"13px",color:"#334155"}}>환자 목록에서 하단 뒤로가기를 한 번 누르면 "한 번 더 누르면 앱이 종료됩니다"가 뜨고, 2초 안에 한 번 더 누르면 앱이 종료됩니다. 종료 확인 창은 없습니다.</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>환자 화면에서 뒤로가기는 지금까지처럼 한 화면씩만 이동합니다.</li>
+                </ul>
+              </div>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
+                  <span style={{background:"#64748b",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.8</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.13</span>
                 </div>
                 <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
                   <li style={{fontSize:"13px",color:"#334155"}}>앱종료하기를 눌러도 종료 확인 창이 다시 뜨지 않습니다. 화면을 저장한 뒤 뒤로가기 기록을 풀고, 안드로이드는 하단 뒤로 버튼을 한 번 더 누르면 앱이 종료됩니다.</li>
@@ -3166,8 +3122,8 @@ function App(){
               <div style={{fontSize:"13px",color:"#64748b",lineHeight:1.6}}>앱이 업데이트되었어요.<br/>주요 변경사항을 확인해보세요.</div>
             </div>
               <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
-              <li style={{fontSize:"13px",color:"#334155"}}>앱종료하기 후 종료 확인 창이 다시 뜨지 않습니다</li>
-              <li style={{fontSize:"13px",color:"#334155"}}>안드로이드는 뒤로 가기를 한 번 더 누르면 앱이 종료됩니다</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>환자 목록에서 뒤로가기를 두 번 누르면 앱이 종료됩니다</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>종료 확인 창과 앱종료하기 버튼은 없습니다</li>
             </ul>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);setShowReleaseNotes(true);}} style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>자세히 보기</button>
