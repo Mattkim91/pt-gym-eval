@@ -238,7 +238,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v8.9</title>
+  <title>환자 평가 관리 v8.10</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -676,7 +676,7 @@ const maskName=(name)=>{
   return name[0]+"O"+name.slice(2);
 };
 
-const APP_VERSION = "v8.9";
+const APP_VERSION = "v8.10";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장","기립경사훈련"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1171,9 +1171,9 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,dismis
     </div></div>
 
     {/* 하단 고정 영역: 신규등록폼 + 검색 + 신환 버튼 */}
-    <div style={{flexShrink:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",padding:"10px 14px",display:"flex",flexDirection:"column",gap:"8px",boxShadow:"0 -2px 10px rgba(0,0,0,0.06)"}}>
+    <div style={{flexShrink:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",padding:"10px 14px calc(10px + env(safe-area-inset-bottom, 0px))",display:"flex",flexDirection:"column",gap:"8px",boxShadow:"0 -2px 10px rgba(0,0,0,0.06)"}}>
 
-      <div style={{display:"flex",alignItems:"center",gap:"7px",background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 10px"}}>
+      <div id="pt-list-search" style={{display:"flex",alignItems:"center",gap:"7px",background:"#f8fafc",border:"1.5px solid #e2e8f0",borderRadius:"10px",padding:"8px 10px"}}>
         <IcoSearch/><input style={{border:"none",outline:"none",fontSize:"14px",color:"#334155",width:"100%",background:"transparent"}} placeholder="ID 또는 이름 검색" value={search} onChange={e=>setSearch(e.target.value)}/>
       </div>
       {editPt&&(
@@ -2741,8 +2741,36 @@ function MmtInput({value, onChange}){
 
 
 function Toast({data,onAction}){
+  const large=!!(data&&data.large&&data.msg);
+  const [aboveSearch,setAboveSearch]=React.useState(null);
+  React.useLayoutEffect(()=>{
+    if(!large){ setAboveSearch(null); return; }
+    const place=()=>{
+      const el=document.getElementById("pt-list-search");
+      if(!el){ setAboveSearch(null); return; }
+      const top=el.getBoundingClientRect().top;
+      setAboveSearch(Math.round(window.innerHeight-top+14));
+    };
+    place();
+    window.addEventListener("resize", place);
+    return()=>window.removeEventListener("resize", place);
+  },[large]);
   if(!data||!data.msg) return null;
   const hasAction=!!(data.nextEval&&onAction);
+  if(data.large){
+    return(
+      <div id="app-toast" style={{position:"fixed",left:"50%",transform:"translateX(-50%)",zIndex:10020,
+        bottom:aboveSearch!=null?aboveSearch:"calc(16px + env(safe-area-inset-bottom, 0px))",
+        width:"80vw",maxWidth:"420px",boxSizing:"border-box",
+        background:"rgba(15,23,42,0.94)",color:"#fff",borderRadius:"18px",
+        padding:"22px 20px",fontSize:"22px",fontWeight:800,lineHeight:1.45,
+        boxShadow:"0 12px 40px rgba(0,0,0,0.45)",textAlign:"center",
+        pointerEvents:"none",whiteSpace:"normal"}}>
+        <div>한 번 더 누르면</div>
+        <div>앱이 종료됩니다</div>
+      </div>
+    );
+  }
   // 가로로 두면 좁은 화면에서 문구 칸이 한 글자 너비로 줄어 세로로 쌓인다.
   // 문구는 항상 한 줄, 이어서 하기 버튼은 그 아래. + 버튼(70px)·타이머 버튼보다 위에 둔다.
   return(
@@ -2847,12 +2875,12 @@ function App(){
   const flushScreenRef=React.useRef(()=>{});
   const persist=nd=>{setDb(nd);saveData(nd);};
   const [confirmState,setConfirmState]=useState({msg:null,onYes:null});
-  const [toastData,setToastData]=useState({msg:"",nextEval:null});
+  const [toastData,setToastData]=useState({msg:"",nextEval:null,large:false});
   const toastRef=React.useRef(null);
-  const showToast=(msg,duration=2000,nextEval=null)=>{
-    setToastData({msg,nextEval});
+  const showToast=(msg,duration=2000,nextEval=null,large=false)=>{
+    setToastData({msg,nextEval,large:!!large});
     if(toastRef.current) clearTimeout(toastRef.current);
-    toastRef.current=setTimeout(()=>setToastData({msg:"",nextEval:null}),duration);
+    toastRef.current=setTimeout(()=>setToastData({msg:"",nextEval:null,large:false}),duration);
   };
   const handleToastAction=()=>{
     if(!toastData.nextEval) return;
@@ -2981,7 +3009,7 @@ function App(){
     // 환자 목록. 확인 창 없이 한 번 더 누르면 종료되게 첫 기록만 남긴다.
     const info=(window.__ptArmExit&&window.__ptArmExit())||{ios:false};
     if(info.ios) showToast("화면 아래를 위로 밀어 앱을 닫아 주세요.", 2000);
-    else showToast("한 번 더 누르면 앱이 종료됩니다", 2000);
+    else showToast("한 번 더 누르면 앱이 종료됩니다", 2000, null, true);
   };
   requestBackRef.current=()=>{ stepBackRef.current(); };
   useEffect(()=>{
@@ -3012,9 +3040,18 @@ function App(){
             <div style={{display:"flex",flexDirection:"column",gap:"18px"}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
-                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.9</span>
-                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.13</span>
+                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.10</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.14</span>
                   <span style={{background:"#dcfce7",color:"#16a34a",borderRadius:"5px",padding:"1px 7px",fontSize:"11px",fontWeight:600}}>최신</span>
+                </div>
+                <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  <li style={{fontSize:"13px",color:"#334155"}}>환자 목록에서 뒤로가기를 누르면 "한 번 더 누르면 / 앱이 종료됩니다" 안내가 검색창 바로 위에 크게 보입니다.</li>
+                </ul>
+              </div>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
+                  <span style={{background:"#64748b",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.9</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.13</span>
                 </div>
                 <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
                   <li style={{fontSize:"13px",color:"#334155"}}>환자 목록에서 하단 뒤로가기를 한 번 누르면 "한 번 더 누르면 앱이 종료됩니다"가 뜨고, 2초 안에 한 번 더 누르면 앱이 종료됩니다. 종료 확인 창은 없습니다.</li>
@@ -3122,8 +3159,7 @@ function App(){
               <div style={{fontSize:"13px",color:"#64748b",lineHeight:1.6}}>앱이 업데이트되었어요.<br/>주요 변경사항을 확인해보세요.</div>
             </div>
               <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
-              <li style={{fontSize:"13px",color:"#334155"}}>환자 목록에서 뒤로가기를 두 번 누르면 앱이 종료됩니다</li>
-              <li style={{fontSize:"13px",color:"#334155"}}>종료 확인 창과 앱종료하기 버튼은 없습니다</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>종료 안내는 검색창 바로 위에 두 줄로 크게 보입니다</li>
             </ul>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);setShowReleaseNotes(true);}} style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>자세히 보기</button>
