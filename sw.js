@@ -1,5 +1,5 @@
 // 앱 껍데기만 캐시한다. 환자 데이터(localStorage)는 캐시에 넣지 않는다.
-const CACHE = 'pt-eval-shell-v8.21';
+const CACHE = 'pt-eval-shell-v8.22';
 const ASSETS = [
   './',
   './index.html',
