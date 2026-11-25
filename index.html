@@ -242,7 +242,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v8.24</title>
+  <title>환자 평가 관리 v8.25</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -680,7 +680,7 @@ const maskName=(name)=>{
   return name[0]+"O"+name.slice(2);
 };
 
-const APP_VERSION = "v8.24";
+const APP_VERSION = "v8.25";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장","기립경사훈련"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -3028,6 +3028,7 @@ function App(){
   const [mobileView,setMobileView]=useState(()=>screenWantsContent(bootNav)?"content":"list");
   const contentGoBackRef=React.useRef(null);
   const [showReleaseNotes,setShowReleaseNotes]=useState(false);
+  const [showBackupMenu,setShowBackupMenu]=useState(false);
   const [showUpdateBanner,setShowUpdateBanner]=useState(()=>{
     const seen=localStorage.getItem("pt_seen_version");
     // 처음 방문자(seen===null): 팝업 없이 현재 버전 저장
@@ -3047,9 +3048,11 @@ function App(){
   const draftRef=React.useRef(bootNav&&bootNav.dirty?bootNav.draft:null);
   const draftDirtyRef=React.useRef(!!(bootNav&&bootNav.dirty));
   const showReleaseRef=React.useRef(false);
+  const showBackupMenuRef=React.useRef(false);
   const showUpdateRef=React.useRef(false);
   const confirmStateRef=React.useRef({msg:null,onYes:null,onNo:null});
   showReleaseRef.current=showReleaseNotes;
+  showBackupMenuRef.current=showBackupMenu;
   showUpdateRef.current=showUpdateBanner;
   const flushScreenRef=React.useRef(()=>{});
   // 저장이 끝난 최신 데이터. 다시 그려지기 전에 이어서 저장해도 앞의 저장을 잃지 않게 한다.
@@ -3210,6 +3213,7 @@ function App(){
     if(window.__ptHoldExit) return;
     const confirm=confirmStateRef.current;
     if(confirm&&confirm.msg){ if(confirm.onNo) confirm.onNo(); return; }
+    if(showBackupMenuRef.current){ setShowBackupMenu(false); return; }
     if(showReleaseRef.current){ setShowReleaseNotes(false); return; }
     if(showUpdateRef.current){ setShowUpdateBanner(false); try{ localStorage.setItem("pt_seen_version", APP_VERSION); }catch(e){} return; }
     if(dismissRef.current&&dismissRef.current()) return;
@@ -3252,6 +3256,27 @@ function App(){
       <ConfirmDialog msg={confirmState.msg} onYes={confirmState.onYes} onNo={confirmState.onNo} okOnly={confirmState.okOnly}/>
       <Toast data={toastData} onAction={handleToastAction}/>
 
+      {/* 백업·복원 선택. 파일 선택창은 누른 순간 바로 열어야 하므로, 닫으면서 같은 클릭 안에서 실행한다. */}
+      {showBackupMenu&&(
+        <div style={{position:"fixed",inset:0,zIndex:9990,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}} onClick={()=>setShowBackupMenu(false)}>
+          <div role="dialog" aria-label="백업과 복원" style={{background:"#fff",borderRadius:"16px",padding:"20px",maxWidth:"340px",width:"100%",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
+              <span style={{fontSize:"17px",fontWeight:800,color:"#1e293b"}}>백업 · 복원</span>
+              <button aria-label="닫기" onClick={()=>setShowBackupMenu(false)} style={{background:"none",border:"none",fontSize:"20px",color:"#94a3b8",cursor:"pointer",padding:"2px 6px",lineHeight:1}}>✕</button>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+              <button onClick={()=>{setShowBackupMenu(false);document.dispatchEvent(new CustomEvent("backup-export"));}} style={{display:"flex",flexDirection:"column",gap:"3px",textAlign:"left",background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:"12px",padding:"14px 16px",cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                <span style={{fontSize:"16px",fontWeight:800,color:"#1d4ed8"}}>⬇ 백업</span>
+                <span style={{fontSize:"12px",color:"#475569"}}>이 기기의 기록을 파일로 저장해요</span>
+              </button>
+              <button onClick={()=>{setShowBackupMenu(false);document.dispatchEvent(new CustomEvent("backup-import"));}} style={{display:"flex",flexDirection:"column",gap:"3px",textAlign:"left",background:"#f0fdf4",border:"1.5px solid #bbf7d0",borderRadius:"12px",padding:"14px 16px",cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
+                <span style={{fontSize:"16px",fontWeight:800,color:"#15803d"}}>⬆ 복원</span>
+                <span style={{fontSize:"12px",color:"#475569"}}>백업 파일을 골라 기록을 불러와요</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showReleaseNotes&&(
         <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}} onClick={()=>setShowReleaseNotes(false)}>
           <div style={{background:"#fff",borderRadius:"16px",padding:"24px",maxWidth:"420px",width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}} onClick={e=>e.stopPropagation()}>
@@ -3262,9 +3287,18 @@ function App(){
             <div style={{display:"flex",flexDirection:"column",gap:"18px"}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
-                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.24</span>
+                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.25</span>
                   <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.26</span>
                   <span style={{background:"#dcfce7",color:"#16a34a",borderRadius:"5px",padding:"1px 7px",fontSize:"11px",fontWeight:600}}>최신</span>
+                </div>
+                <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  <li style={{fontSize:"13px",color:"#334155"}}>상단의 백업·복원을 ‘백업’ 버튼 하나로 모았어요. 누르면 백업과 복원 중에 고를 수 있어요</li>
+                </ul>
+              </div>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
+                  <span style={{background:"#64748b",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.24</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.26</span>
                 </div>
                 <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
                   <li style={{fontSize:"13px",color:"#334155"}}>넓은 화면에서 작성 중 다른 환자를 눌러도 입력이 자동저장돼요</li>
@@ -3427,9 +3461,7 @@ function App(){
               <div style={{fontSize:"13px",color:"#64748b",lineHeight:1.6}}>앱이 업데이트되었어요.<br/>주요 변경사항을 확인해보세요.</div>
             </div>
               <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
-              <li style={{fontSize:"13px",color:"#334155"}}>작성 중인 기록이 사라지거나 섞이던 문제를 고쳤어요</li>
-              <li style={{fontSize:"13px",color:"#334155"}}>10mWT 다시 재기는 0초부터 시작해요</li>
-              <li style={{fontSize:"13px",color:"#334155"}}>공유 파일에 장애진단 ROM과 손가락 ROM이 들어가요</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>복원은 이제 상단 ‘백업’ 버튼을 누르면 나와요</li>
             </ul>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);setShowReleaseNotes(true);}} style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>자세히 보기</button>
@@ -3455,8 +3487,7 @@ function App(){
             {(!isTablet||mobileView!=="content")&&(
             <>
               <button onClick={()=>setShowReleaseNotes(true)} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 7px",fontSize:"11px",color:"#94a3b8",cursor:"pointer",fontWeight:600,display:"inline-flex",alignItems:"center",flexShrink:0}} title="업데이트 내역"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 3v13"/><path d="M6 11l6 6 6-6"/><path d="M4 20h16"/></svg></button>
-              <button onClick={()=>document.dispatchEvent(new CustomEvent("backup-export"))} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#2563eb",cursor:"pointer",fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>⬇ 백업</button>
-              <button onClick={()=>document.dispatchEvent(new CustomEvent("backup-import"))} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#16a34a",cursor:"pointer",fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>⬆ 복원</button>
+              <button onClick={()=>setShowBackupMenu(true)} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:"7px",padding:"5px 9px",fontSize:"11px",color:"#2563eb",cursor:"pointer",fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>백업</button>
             </>
             )}
           </div>
