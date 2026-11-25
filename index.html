@@ -211,12 +211,16 @@
           }
           sessionStorage.setItem("pt_shell_reload", lastMod);
           localStorage.setItem("app_file_version", lastMod);
-          const data = localStorage.getItem("pt_eval_data");
-          if(data){
-            localStorage.setItem("pt_eval_backup_latest", data);
-            localStorage.setItem("pt_eval_backup_date", localDateStr());
-            localStorage.setItem("pt_eval_backup_time", new Date().toISOString());
-          }
+          // 깨진 본문이 정상 복사본을 덮지 않게, 읽을 수 있을 때만 복사한다.
+          try{
+            const data = localStorage.getItem("pt_eval_data");
+            const parsed = data ? JSON.parse(data) : null;
+            if(parsed && Array.isArray(parsed.patients)){
+              localStorage.setItem("pt_eval_backup_latest", data);
+              localStorage.setItem("pt_eval_backup_date", localDateStr());
+              localStorage.setItem("pt_eval_backup_time", new Date().toISOString());
+            }
+          }catch(e){}
           const finish = () => { preserveScreenForReload(); window.location.reload(); };
           const tasks = [];
           if("caches" in window) tasks.push(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith("pt-eval-shell-")).map(k => caches.delete(k)))));
@@ -238,7 +242,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v8.23</title>
+  <title>환자 평가 관리 v8.24</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -676,7 +680,7 @@ const maskName=(name)=>{
   return name[0]+"O"+name.slice(2);
 };
 
-const APP_VERSION = "v8.23";
+const APP_VERSION = "v8.24";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장","기립경사훈련"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -848,6 +852,18 @@ function mergeImported(db, imported){
   return {patients, records, nextNo, addedPatients, addedRecords};
 }
 
+// 본문·복사본이 앱 데이터로 쓸 수 있는 값이면 객체를, 아니면 null을 준다.
+function parseDb(raw){
+  if(!raw) return null;
+  try{
+    const d=JSON.parse(raw);
+    if(!d||typeof d!=="object"||!Array.isArray(d.patients)) return null;
+    if(d.records!=null&&(typeof d.records!=="object"||Array.isArray(d.records))) return null;
+    return d;
+  }catch(e){ return null; }
+}
+// 이번 실행에서 본문을 읽지 못했을 때의 결과. "latest" | "prev" | "none"
+let dataRecovery=null;
 function loadData(){
   const apply=(d)=>{
     const norm=normalizePatients(d.patients||[], d.records||{});
@@ -858,28 +874,41 @@ function loadData(){
     }
     return out;
   };
-  try{
-    const r=localStorage.getItem("pt_eval_data");
-    if(r) return apply(JSON.parse(r));
-  }catch(e){
-    // 파싱 오류 시 백업에서 복구 시도 (최신 → 어제 → 그저께 순)
-    const keys=["pt_eval_backup_latest","pt_eval_backup_prev"];
-    for(const k of keys){
-      try{
-        const b=localStorage.getItem(k);
-        if(b) return apply(JSON.parse(b));
-      }catch{}
+  const main=localStorage.getItem("pt_eval_data");
+  // 읽지 못한 원본은 덮어쓰기 전에 따로 남긴다.
+  const keepBroken=()=>{ if(main){ try{ localStorage.setItem("pt_eval_data_broken", main); }catch(e){} } };
+  // 본문 → 최신 복사본 → 그전 복사본 순으로, 읽을 수 있는 첫 값을 쓴다. 본문이 아예 없을 때도 복사본을 찾는다.
+  const sources=[
+    ["main", main],
+    ["latest", localStorage.getItem("pt_eval_backup_latest")],
+    ["prev", localStorage.getItem("pt_eval_backup_prev")],
+  ];
+  for(const [name,raw] of sources){
+    const d=parseDb(raw);
+    if(!d) continue;
+    let out;
+    try{ out=apply(d); }catch(e){ continue; }
+    if(name!=="main"){
+      keepBroken();
+      dataRecovery=name;
+      // 다시 열 때도 같은 값을 쓰도록 본문 자리에 되돌려 놓는다.
+      try{ localStorage.setItem("pt_eval_data", JSON.stringify(out)); }catch(e){}
     }
+    return out;
   }
+  if(main){ keepBroken(); dataRecovery="none"; }
   return{patients:[],records:{},templates:DEFAULT_TEMPLATES,nextNo:0};
 }
 
+// 본문을 쓰지 못하면(용량 초과 등) 예외를 던진다. 이때 이전 본문은 그대로 남는다.
 function saveData(d){
   const payload=JSON.stringify(d);
   localStorage.setItem("pt_eval_data",payload);
-  // 저장 시마다 최신 백업 갱신
-  localStorage.setItem("pt_eval_backup_latest",payload);
-  localStorage.setItem("pt_eval_backup_time",new Date().toISOString());
+  // 저장 시마다 최신 백업 갱신. 본문은 이미 저장됐으므로 복사본 실패로 저장 실패라고 하지 않는다.
+  try{
+    localStorage.setItem("pt_eval_backup_latest",payload);
+    localStorage.setItem("pt_eval_backup_time",new Date().toISOString());
+  }catch(e){}
 }
 
 function autoBackupOnOpen(){
@@ -889,15 +918,39 @@ function autoBackupOnOpen(){
   if(lastBackupDate===today) return;
   try{
     const data=localStorage.getItem("pt_eval_data");
-    if(!data) return;
-    // 기존 latest → prev로 이동 (하루 전 백업 보존)
+    // 본문이 깨졌으면 복사본을 건드리지 않는다. 복구는 loadData가 한다.
+    if(!parseDb(data)) return;
+    // 기존 latest → prev로 이동 (하루 전 백업 보존). 깨진 latest는 옮기지 않는다.
     const latest=localStorage.getItem("pt_eval_backup_latest");
-    if(latest) localStorage.setItem("pt_eval_backup_prev",latest);
+    if(parseDb(latest)) localStorage.setItem("pt_eval_backup_prev",latest);
     // 오늘 데이터 latest에 저장
     localStorage.setItem("pt_eval_backup_latest",data);
     localStorage.setItem("pt_eval_backup_date",today);
     localStorage.setItem("pt_eval_backup_time",new Date().toISOString());
   }catch{}
+}
+
+// 10mWT 평균·속도. 0초나 숫자가 아닌 시행은 평균에 넣지 않는다.
+function calc10mWT(fd){
+  const vals=["trial1","trial2","trial3"].map(k=>parseFloat(fd[k])).filter(v=>Number.isFinite(v)&&v>0);
+  const svals=["steps1","steps2","steps3"].map(k=>parseFloat(fd[k])).filter(v=>!isNaN(v));
+  const steps_avg=svals.length>0?(svals.reduce((a,b)=>a+b,0)/svals.length).toFixed(1):"";
+  if(!vals.length) return {avg:"",speed:"",steps_avg};
+  const avg=(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2);
+  return {avg, speed:parseFloat(avg)>0?(10/parseFloat(avg)).toFixed(3):"", steps_avg};
+}
+// 시간 입력: 숫자와 소수점 하나만. 쉼표는 소수점으로 바꾼다.
+function cleanSeconds(v){
+  const t=String(v).replace(/,/g,".").replace(/[^0-9.]/g,"");
+  const i=t.indexOf(".");
+  return i<0?t:t.slice(0,i+1)+t.slice(i+1).replace(/\./g,"");
+}
+// 예전 버전이 저장한 Infinity/NaN 속도는 값으로 보여 주지 않는다.
+function showSpeed(v){
+  return v==="Infinity"||v==="NaN"?"—":v;
+}
+function escHtml(v){
+  return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
 function useIsTablet(){
@@ -933,7 +986,7 @@ const S={
 
 const IcoPencil=()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
 
-function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,dismissRef}){
+function PatientListPanel({db,persist,getDb,beforeLeave,onPatientsRemoved,selectedPatient,onSelect,useConfirm,dismissRef}){
   const [search,setSearch]=useState("");
   const [backupMsg,setBackupMsg]=useState("");
   const [sortKey,setSortKey]=useState("date");
@@ -1031,7 +1084,7 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,dismis
       // 같은 환자(고유 id, 또는 예전 #번호 + 이름 + 등록 시각)만 기록을 합친다.
       // 번호만 같고 다른 사람이면 별도 환자로 추가한다. 같은 기록 id는 중복으로 넣지 않는다.
       const merged=mergeImported(db, imported);
-      persist({...db,patients:merged.patients,records:merged.records,nextNo:merged.nextNo});
+      if(!persist({...db,patients:merged.patients,records:merged.records,nextNo:merged.nextNo})) return;
       setBackupMsg(`✅ 복원 완료. 새 환자 ${merged.addedPatients}명, 기록 ${merged.addedRecords}건을 추가했습니다.`);
       setTimeout(()=>setBackupMsg(""),5000);
     }catch(err){
@@ -1051,7 +1104,7 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,dismis
   const addPt=()=>{
     const name=maskName(newName.trim()||genName());
     const created=createPatient(db.patients, db.nextNo, name);
-    persist({...db,nextNo:created.nextNo,patients:[...db.patients,created.patient]});
+    if(!persist({...db,nextNo:created.nextNo,patients:[...db.patients,created.patient]})) return;
     setNewName("");setAddMode(false);
   };
   const startEdit=(p,e)=>{
@@ -1063,22 +1116,27 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,dismis
   const saveEdit=()=>{
     if(!editName.trim()) return;
     const newPatients=db.patients.map(p=>p.id===editPt.id?{...p,name:maskName(editName.trim())}:p);
-    persist({...db,patients:newPatients});
+    if(!persist({...db,patients:newPatients})) return;
     setEditPt(null);
   };
-  const quickAdd=(evalKey=null)=>{
+  const quickAdd=async(evalKey=null)=>{
+    // 작성 중인 폼을 먼저 저장한다. 그 저장이 반영된 최신 데이터에 새 환자를 더한다.
+    if(!(await beforeLeave())) return;
+    const cur=getDb();
     const name=genName();
-    const created=createPatient(db.patients, db.nextNo, name);
+    const created=createPatient(cur.patients, cur.nextNo, name);
     const newPt=created.patient;
-    persist({...db,nextNo:created.nextNo,patients:[...db.patients,newPt]});
-    onSelect(newPt,evalKey);
+    if(!persist({...cur,nextNo:created.nextNo,patients:[...cur.patients,newPt]})) return;
+    onSelect(newPt,evalKey,true);
   };
   const delPt=async(id)=>{
     const pt=db.patients.find(p=>p.id===id);
     const ok=await useConfirm(`"${pt?.name||id}"님이 명단에서 삭제되며 모든 평가 기록이 사라집니다.\n삭제하시겠습니까?`);
     if(!ok) return;
-    const rec={...db.records};delete rec[id];
-    persist({...db,patients:db.patients.filter(p=>p.id!==id),records:rec});
+    const cur=getDb();
+    const rec={...cur.records};delete rec[id];
+    if(!persist({...cur,patients:cur.patients.filter(p=>p.id!==id),records:rec})) return;
+    onPatientsRemoved(id);
   };
 
   const getLatestSavedAt=(pid)=>{
@@ -1125,7 +1183,8 @@ function PatientListPanel({db,persist,selectedPatient,onSelect,useConfirm,dismis
         <button onClick={async()=>{
           const ok=await useConfirm(`환자 ${db.patients.length}명 전체가 삭제되며 모든 평가 기록이 사라집니다.\n삭제 전 백업을 권장합니다.\n\n정말 전체 삭제하시겠습니까?`);
           if(!ok) return;
-          persist({...db,patients:[],records:{}});
+          if(!persist({...getDb(),patients:[],records:{}})) return;
+          onPatientsRemoved(null);
         }} style={{padding:"5px 10px",borderRadius:"20px",fontSize:"12px",fontWeight:600,cursor:"pointer",border:"1.5px solid #ef4444",background:"#fff",color:"#ef4444",flexShrink:0}}>
           🗑 전체삭제
         </button>
@@ -1387,6 +1446,51 @@ function TiltTable({data, onChange, readOnly}){
 }
 
 // ── 날짜별 한눈에 보기 ───────────────────────────────────────────
+// 지체장애 ROM 공유용 표. 값이 하나라도 있는 표만 넣는다.
+function disRomPrintHtml(d){
+  const has=prefix=>Object.keys(d).some(k=>k.startsWith(prefix)&&d[k]!==""&&d[k]!=null);
+  const v=k=>escHtml(d[k]||"—");
+  const th="background:#e8eaf6;padding:4px;border:1px solid #c5cae9;color:#312e81;text-align:center;font-weight:700;";
+  const td="padding:4px;border:1px solid #e2e8f0;text-align:center;";
+  const name=t=>escHtml(t).replace(/\n/g,"<br/>");
+  let out="";
+  ["suji","jokji"].forEach(sec=>{
+    if(!has(sec+"_")) return;
+    const s=DISROM_DATA[sec];
+    const fingers=s.joints[0].fingers.map(f=>f.f);
+    out+=`<div style="margin-bottom:10px;"><div style="font-size:12px;font-weight:800;color:#312e81;margin-bottom:4px;">${s.title}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:10px;"><thead><tr>
+      <th rowspan="2" style="${th}">부위</th><th rowspan="2" style="${th}"></th>${fingers.map(f=>`<th colspan="2" style="${th}">${f}</th>`).join("")}
+      </tr><tr>${fingers.map(()=>`<th style="${th}">굴곡</th><th style="${th}">신전</th>`).join("")}</tr></thead><tbody>`;
+    s.joints.forEach((joint,ji)=>{
+      out+=`<tr><td rowspan="3" style="${td}font-weight:600;">${name(joint.name)}</td><td style="${td}">정상범위</td>`;
+      joint.fingers.forEach(fg=>{ out+=`<td style="${td}color:#6366f1;">${fg.norm.굴곡}</td><td style="${td}color:#6366f1;">${fg.norm.신전}</td>`; });
+      out+="</tr>";
+      [["r","우"],["l","좌"]].forEach(([side,label])=>{
+        out+=`<tr><td style="${td}">${label}</td>`;
+        joint.fingers.forEach((_,fi)=>{
+          const base=sec+"_"+ji+"_"+fi+"_"+side+"_";
+          out+=`<td style="${td}font-weight:600;">${v(base+"굴")}</td><td style="${td}font-weight:600;">${v(base+"신")}</td>`;
+        });
+        out+="</tr>";
+      });
+    });
+    out+="</tbody></table></div>";
+  });
+  if(has("gwan_")){
+    out+=`<div style="margin-bottom:10px;"><div style="font-size:12px;font-weight:800;color:#312e81;margin-bottom:4px;">관절 수동 운동 범위</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr>
+      <th style="${th}">부위</th><th style="${th}">운동</th><th style="${th}">정상범위</th><th style="${th}">우</th><th style="${th}">좌</th></tr></thead><tbody>`;
+    DISROM_DATA.gwan.forEach((joint,ji)=>{
+      joint.motions.forEach((mot,mi)=>{
+        out+="<tr>"+(mi===0?`<td rowspan="${joint.motions.length}" style="${td}font-weight:600;">${name(joint.name)}</td>`:"")+
+          `<td style="${td}">${mot.m}</td><td style="${td}color:#6366f1;">${mot.norm}</td><td style="${td}font-weight:600;">${v("gwan_"+ji+"_"+mi+"_r")}</td><td style="${td}font-weight:600;">${v("gwan_"+ji+"_"+mi+"_l")}</td></tr>`;
+      });
+    });
+    out+="</tbody></table></div>";
+  }
+  return out||`<div style="font-size:12px;color:#94a3b8;">입력된 값이 없습니다.</div>`;
+}
 function buildPrintHtml(patient, date, items, templates){
   const displayName = patient.name;
   const colMap=EVAL_COLORS;
@@ -1403,7 +1507,7 @@ function buildPrintHtml(patient, date, items, templates){
       <div style="padding:12px 14px;font-size:13px;color:#334155;">`;
 
     tmpl.fields.filter(f=>f.id!=="date").forEach(field=>{
-      const val=rec.data[field.id];
+      const val=field.id==="speed"?showSpeed(rec.data[field.id]):rec.data[field.id];
       if(field.type==="fac_select"){
         const score=rec.data["score"]??"";
         const row=field.rows.find(([v])=>v===String(score));
@@ -1432,6 +1536,27 @@ function buildPrintHtml(patient, date, items, templates){
           });
           body+=`</tbody></table></div>`;
         });
+        // 손가락 ROM: 값이 있는 부위만
+        FINGER_ROM_SECTIONS.forEach((sec,si)=>{
+          if(!sec.rows.some((_,ri)=>romData["f"+si+"_"+ri]?.right||romData["f"+si+"_"+ri]?.left)) return;
+          body+=`<div style="margin-bottom:8px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">
+            <thead><tr>
+              <th style="background:#eff6ff;padding:5px;border:1px solid #e2e8f0;width:30%;text-align:center;">Right</th>
+              <th style="background:#dbeafe;padding:5px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#1d4ed8;">Finger ROM · ${sec.title}</th>
+              <th style="background:#eff6ff;padding:5px;border:1px solid #e2e8f0;width:30%;text-align:center;">Left</th>
+            </tr></thead><tbody>`;
+          sec.rows.forEach((row,ri)=>{
+            const cell=romData["f"+si+"_"+ri]||{};
+            body+=`<tr style="background:${ri%2===0?"#fafbfc":"white"}">
+              <td style="text-align:center;padding:5px;border:1px solid #f1f5f9;font-weight:600;color:#3daa5c;">${escHtml(cell.right||"—")}</td>
+              <td style="text-align:center;padding:5px;border:1px solid #f1f5f9;font-size:11px;color:#475569;">${row}</td>
+              <td style="text-align:center;padding:5px;border:1px solid #f1f5f9;font-weight:600;color:#3daa5c;">${escHtml(cell.left||"—")}</td>
+            </tr>`;
+          });
+          body+=`</tbody></table></div>`;
+        });
+      } else if(field.type==="disrom_table"){
+        body+=disRomPrintHtml(val||{});
       } else if(field.type==="mmt_sections"){
         const md=val||{};
         MMT_SECTIONS.forEach((grp,gi)=>{
@@ -1538,7 +1663,7 @@ function buildPrintHtml(patient, date, items, templates){
       } else if(field.type==="toggle"||field.type==="number"||field.type==="number_auto"||field.type==="text"){
         if(val||val===0) body+=`<div style="margin-bottom:4px;"><span style="color:#94a3b8;font-size:11px;min-width:80px;display:inline-block;">${field.label}</span><span style="font-weight:600;">${val}</span></div>`;
       } else if(field.type==="textarea"&&val){
-        body+=`<div style="font-size:12px;color:#64748b;background:#f8fafc;padding:6px 10px;border-radius:6px;border:1px solid #e2e8f0;">${val}</div>`;
+        body+=`<div style="font-size:12px;color:#64748b;background:#f8fafc;padding:6px 10px;border-radius:6px;border:1px solid #e2e8f0;white-space:pre-wrap;word-break:break-word;">${escHtml(val)}</div>`;
       }
     });
     body+=`</div></div>`;
@@ -1922,7 +2047,7 @@ function RecordSummary({evalKey,data,col,templates}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
       {tmpl.fields.filter(f=>f.id!=="date").map(field=>{
-        const val=data[field.id];
+        const val=field.id==="speed"?showSpeed(data[field.id]):data[field.id];
 
         if(field.type==="fac_select"){
           const score=data["score"]??"";
@@ -2248,7 +2373,7 @@ function RecordSummary({evalKey,data,col,templates}){
 
         if(field.type==="textarea"&&val){
           return(
-            <div key={field.id} style={{fontSize:"12px",color:"#64748b",background:"#f8fafc",padding:"7px 10px",borderRadius:"7px",border:"1px solid #e2e8f0"}}>{val}</div>
+            <div key={field.id} style={{fontSize:"12px",color:"#64748b",background:"#f8fafc",padding:"7px 10px",borderRadius:"7px",border:"1px solid #e2e8f0",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{val}</div>
           );
         }
 
@@ -2258,7 +2383,7 @@ function RecordSummary({evalKey,data,col,templates}){
   );
 }
 
-function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,directNavRef,useConfirm,showToast,initialNav,onScreen,requestBackRef,onDraft}){
+function ContentPanel({db,persist,getDb,patient,isTablet,onBackToList,goBackRef,leaveFormRef,directNavRef,useConfirm,showToast,initialNav,onScreen,requestBackRef,onDraft}){
   const bootRef=React.useRef(undefined);
   if(bootRef.current===undefined){
     const nav=screenMatchesPatient(initialNav, patient) ? initialNav : null;
@@ -2267,7 +2392,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
   const boot=bootRef.current;
   const bootDraftLive=!!(boot&&boot.dirty&&boot.draft&&typeof boot.draft==="object"&&boot.ek);
   const [tab,setTab]=useState(boot&&boot.tab==="date"?"date":"item");
-  const [rv,setRv]=useState(bootDraftLive?"eval-form":(boot&&boot.rv?boot.rv:"eval-select"));
+  const [rv,setRv]=useState(bootDraftLive?"eval-form":(boot&&boot.rv&&boot.rv!=="date-view"?boot.rv:"eval-select"));
   const [ek,setEk]=useState(boot&&boot.ek?boot.ek:null);
   const [editRec,setEditRec]=useState(()=>{
     if(!boot||boot.rv!=="eval-form"||!boot.ek||!patient||boot.editRecId==null) return null;
@@ -2279,7 +2404,8 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
   useEffect(()=>{ if(rv!=="eval-form"&&bootDraft) setBootDraft(null); },[rv,bootDraft]);
   const [scoreDisplay,setScoreDisplay]=useState(null); // {label, value, max, accent, bg, border}
   const evalFormDirtyRef=React.useRef(!!restoredDraft); // EvalForm의 isDirty를 공유
-  const evalFormSaveRef=React.useRef(null);   // EvalForm의 save 함수
+  const evalFormLeaveRef=React.useRef(null);  // EvalForm을 떠나기 전 처리(자동저장·타이머 확인)
+  const [formSeq,setFormSeq]=useState(0);     // 폼을 새로 열 때마다 바꿔, 이전 폼의 입력이 다른 폼에 남지 않게 한다
   const skipPatientReset=React.useRef(!!boot);
   useEffect(()=>{
     if(skipPatientReset.current){ skipPatientReset.current=false; return; }
@@ -2305,6 +2431,11 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
     if(opts.ek!==undefined) setEk(opts.ek);
     if(opts.editRec!==undefined) setEditRec(opts.editRec);
     if(opts.tab!==undefined) setTab(opts.tab);
+    if(nextRv==="eval-form"){
+      setFormSeq(n=>n+1);
+      setBootDraft(null);
+      evalFormDirtyRef.current=false;
+    }
     setRv(nextRv);
     emitScreen({
       rv:nextRv,
@@ -2321,26 +2452,33 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
 
   // goBack: useEffect로 매 렌더 후 즉시 동기화 (가장 안정적)
   const goBackLatest=React.useRef(null);
+  // 폼을 닫고, 들어온 곳(항목별 기록 또는 날짜별 모아보기)으로 돌아간다.
+  const closeForm=()=>{
+    const toDate=tab==="date";
+    const nextRv=toDate?"eval-select":"eval-history";
+    const nextEk=toDate?null:ek;
+    setEditRec(null);
+    setEk(nextEk);
+    setRv(nextRv);
+    emitScreen({rv:nextRv, ek:nextEk, editRecId:null, dropDraft:true}, "user");
+  };
+  // 폼을 떠나기 전 처리. "stay": 머문다, "saved": 자동저장하고 닫음, "clean"/"discard": 저장 없이 떠나도 됨
+  const leaveForm=async()=>{
+    if(!patient||rv!=="eval-form"||!evalFormLeaveRef.current) return "clean";
+    const r=await evalFormLeaveRef.current();
+    if(r==="discard") evalFormDirtyRef.current=false;
+    return r;
+  };
   const goBack=async()=>{
     if(rv==="eval-form"){
-      if(evalFormDirtyRef.current){
-        if(evalFormSaveRef.current) evalFormSaveRef.current();
-        return true;
-      }
+      const r=await leaveForm();
+      if(r==="stay"||r==="saved") return true;
       evalFormDirtyRef.current=false;
-      const next=tab==="date"?"date-view":"eval-history";
-      setEditRec(null);
-      setRv(next);
-      emitScreen({rv:next, editRecId:null, dropDraft:true}, "user");
+      closeForm();
       return true;
     } else if(rv==="eval-history"){
       setEk(null);setRv("eval-select");
       emitScreen({rv:"eval-select", ek:null, editRecId:null, dropDraft:true}, "user");
-      return true;
-    }
-    else if(rv==="date-view"){
-      setRv("eval-select");
-      emitScreen({rv:"eval-select", dropDraft:true}, "user");
       return true;
     }
     else if(rv==="eval-select"){
@@ -2353,6 +2491,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
   React.useEffect(()=>{
     goBackLatest.current=goBack;
     if(goBackRef) goBackRef.current=()=>goBackLatest.current();
+    if(leaveFormRef) leaveFormRef.current=leaveForm;
     if(onScreen && (patient||!(window.__ptBootScreen&&window.__ptBootScreen.patientId))) onScreen({
       patientId:patient?.id||null,
       rv:patient?rv:"eval-select",
@@ -2367,18 +2506,27 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
     if(da!==db2) return db2.localeCompare(da);
     return b.savedAt-a.savedAt;
   });
-  const saveRec=(k,data,rid)=>{
-    const rec={...db.records},pid=patient.id;
-    if(!rec[pid])rec[pid]={};if(!rec[pid][k])rec[pid][k]=[];
-    if(rid!=null)rec[pid][k]=rec[pid][k].map(r=>r.id===rid?{...r,data,savedAt:Date.now()}:r);
-    else rec[pid][k]=[...rec[pid][k],{id:Date.now(),data,savedAt:Date.now()}];
-    persist({...db,records:rec});
+  const saveRec=(k,data,rid,quiet)=>{
+    const cur=getDb(),pid=patient.id;
+    if(!cur.patients.some(p=>p.id===pid)){
+      if(showToast) showToast("명단에서 삭제된 환자라 저장할 수 없습니다",5000);
+      return false;
+    }
+    const mine={...(cur.records[pid]||{})};
+    const list=mine[k]||[];
+    if(rid!=null) mine[k]=list.map(r=>r.id===rid?{...r,data,savedAt:Date.now()}:r);
+    else mine[k]=[...list,{id:Date.now(),data,savedAt:Date.now()}];
+    if(!persist({...cur,records:{...cur.records,[pid]:mine}},quiet)) return false;
     if(showToast){ const nextMap={"BBS":"10mWT","10mWT":"BBS"}; showToast("✅ 저장됐습니다",5000,nextMap[ek]||null); }
+    return true;
   };
   const delRec=async(k,rid,date)=>{
     const ok=await useConfirm(`"${date||"미기재"} ${k}" 항목을 삭제하시겠습니까?`);
     if(!ok) return;
-    const rec={...db.records};rec[patient.id][k]=rec[patient.id][k].filter(r=>r.id!==rid);persist({...db,records:rec});
+    const cur=getDb(),pid=patient.id;
+    const mine={...(cur.records[pid]||{})};
+    mine[k]=(mine[k]||[]).filter(r=>r.id!==rid);
+    persist({...cur,records:{...cur.records,[pid]:mine}});
   };
   const crumb=()=>{
     if(!patient) return null;
@@ -2507,7 +2655,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
             <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
               {getRecs(ek).map(rec=>{
                 const col=EVAL_COLORS[ek];
-                const extra=ek==="BBS"&&rec.data?.bbs_total!==undefined?` · BBS ${rec.data.bbs_total}점`:ek==="FGA"&&rec.data?.fga_total!==undefined?` · FGA ${rec.data.fga_total}점`:ek==="FOG-Q"&&rec.data?.fogq_total!==undefined?` · FOG-Q ${rec.data.fogq_total}점`:ek==="10mWT"&&rec.data?.avg?` · 평균 ${rec.data.avg}초 (${rec.data.speed||"—"}m/s)`:ek==="FAC"&&rec.data?.score!==undefined&&rec.data?.score!==""?` · FAC ${rec.data.score}점`:"";
+                const extra=ek==="BBS"&&rec.data?.bbs_total!==undefined?` · BBS ${rec.data.bbs_total}점`:ek==="FGA"&&rec.data?.fga_total!==undefined?` · FGA ${rec.data.fga_total}점`:ek==="FOG-Q"&&rec.data?.fogq_total!==undefined?` · FOG-Q ${rec.data.fogq_total}점`:ek==="10mWT"&&rec.data?.avg?` · 평균 ${rec.data.avg}초 (${showSpeed(rec.data.speed)||"—"}m/s)`:ek==="FAC"&&rec.data?.score!==undefined&&rec.data?.score!==""?` · FAC ${rec.data.score}점`:"";
                 return(
                   <div key={rec.id} onClick={()=>{navTo("eval-form",{editRec:rec});}} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderLeft:`4px solid ${EVAL_COLORS[ek].accent}`,borderRadius:"10px",padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"8px",cursor:"pointer"}}>
                     <div>
@@ -2539,20 +2687,17 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
         )}
 
         {rv==="eval-form"&&ek&&(
-          <EvalForm template={db.templates[ek]} col={EVAL_COLORS[ek]} initialData={bootDraft||editRec?.data||null}
+          <EvalForm key={patient.id+"|"+ek+"|"+formSeq} template={db.templates[ek]} col={EVAL_COLORS[ek]} initialData={bootDraft||editRec?.data||null}
             restoreDirty={!!bootDraft}
             onDraft={onDraft}
             onScoreChange={setScoreDisplay}
             dirtyRef={evalFormDirtyRef}
-            saveRef={evalFormSaveRef}
+            leaveRef={evalFormLeaveRef}
             useConfirm={useConfirm}
             onSave={(data,isAuto)=>{
-              saveRec(ek,data,editRec?.id??null);
+              if(!saveRec(ek,data,editRec?.id??null,isAuto)) return false;
               evalFormDirtyRef.current=false;
-              const next=tab==="date"?"date-view":"eval-history";
-              setEditRec(null);
-              setRv(next);
-              emitScreen({rv:next, editRecId:null, dropDraft:true}, "user");
+              closeForm();
               if(isAuto){
                 showToast("입력 중이던 내용이 자동저장됐습니다",5000);
               } else if(showToast){
@@ -2560,13 +2705,7 @@ function ContentPanel({db,persist,patient,isTablet,onBackToList,goBackRef,direct
                 const nextEval=nextMap[ek]||null;
                 showToast("✅ 저장됐습니다",5000,nextEval);
               }
-            }}
-            onCancel={()=>{
-              evalFormDirtyRef.current=false;
-              const next=tab==="date"?"date-view":"eval-history";
-              setEditRec(null);
-              setRv(next);
-              emitScreen({rv:next, editRecId:null, dropDraft:true}, "user");
+              return true;
             }}/>
         )}
 
@@ -2833,15 +2972,15 @@ function Toast({data,onAction}){
   );
 }
 
-function ConfirmDialog({msg, onYes, onNo}){
+function ConfirmDialog({msg, onYes, onNo, okOnly}){
   if(!msg) return null;
   return(
     <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.45)"}}>
       <div style={{background:"#fff",borderRadius:"14px",padding:"24px 22px",maxWidth:"320px",width:"90%",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}>
         <div style={{fontSize:"15px",fontWeight:600,color:"#1e293b",marginBottom:"20px",lineHeight:1.6,textAlign:"center",whiteSpace:"pre-wrap"}}>{msg}</div>
         <div style={{display:"flex",gap:"10px"}}>
-          <button onClick={onNo} style={{flex:1,padding:"11px",borderRadius:"9px",border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontSize:"14px",fontWeight:600,cursor:"pointer"}}>아니오</button>
-          <button onClick={onYes} style={{flex:1,padding:"11px",borderRadius:"9px",border:"none",background:"#ef4444",color:"#fff",fontSize:"14px",fontWeight:700,cursor:"pointer"}}>예</button>
+          {!okOnly&&<button onClick={onNo} style={{flex:1,padding:"11px",borderRadius:"9px",border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontSize:"14px",fontWeight:600,cursor:"pointer"}}>아니오</button>}
+          <button onClick={onYes} style={{flex:1,padding:"11px",borderRadius:"9px",border:"none",background:okOnly?"#2563eb":"#ef4444",color:"#fff",fontSize:"14px",fontWeight:700,cursor:"pointer"}}>{okOnly?"확인":"예"}</button>
         </div>
       </div>
     </div>
@@ -2913,7 +3052,26 @@ function App(){
   showReleaseRef.current=showReleaseNotes;
   showUpdateRef.current=showUpdateBanner;
   const flushScreenRef=React.useRef(()=>{});
-  const persist=nd=>{setDb(nd);saveData(nd);};
+  // 저장이 끝난 최신 데이터. 다시 그려지기 전에 이어서 저장해도 앞의 저장을 잃지 않게 한다.
+  const dbRef=React.useRef(db);
+  const getDb=()=>dbRef.current;
+  // 기기에 저장된 뒤에만 화면에 반영한다. 실패하면 false.
+  const persist=(nd,quiet)=>{
+    try{ saveData(nd); }
+    catch(e){
+      if(!quiet) useConfirm("저장하지 못했습니다.\n기기의 저장 공간이 부족할 수 있습니다.\n\n먼저 파일 백업을 받은 뒤, 필요 없는 기록을 정리하고 다시 저장해 주세요.", true);
+      return false;
+    }
+    dbRef.current=nd;
+    setDb(nd);
+    return true;
+  };
+  const leaveFormRef=React.useRef(null);
+  // 다른 환자·다른 평가로 옮기기 전에 작성 중인 폼을 자동저장한다. 머물러야 하면 false.
+  const beforeLeave=async()=>{
+    if(!leaveFormRef.current) return true;
+    return (await leaveFormRef.current())!=="stay";
+  };
   const [confirmState,setConfirmState]=useState({msg:null,onYes:null});
   const [toastData,setToastData]=useState({msg:"",nextEval:null,large:false});
   const toastRef=React.useRef(null);
@@ -2922,22 +3080,25 @@ function App(){
     if(toastRef.current) clearTimeout(toastRef.current);
     toastRef.current=setTimeout(()=>setToastData({msg:"",nextEval:null,large:false}),duration);
   };
-  const handleToastAction=()=>{
-    if(!toastData.nextEval) return;
+  const handleToastAction=async()=>{
+    const nextEval=toastData.nextEval;
+    if(!nextEval||!patientRef.current) return;
     setToastData({msg:"",nextEval:null});
     if(toastRef.current) clearTimeout(toastRef.current);
+    if(!(await beforeLeave())) return;
+    if(!isTablet&&mobileViewRef.current!=="content") setMobileViewSync("content");
     if(contentDirectNavRef.current){
-      contentDirectNavRef.current("eval-form",{ek:toastData.nextEval,editRec:null});
+      contentDirectNavRef.current("eval-form",{ek:nextEval,editRec:null});
     }
   };
-  const useConfirm=(msg)=>new Promise(res=>{
+  const useConfirm=(msg,okOnly)=>new Promise(res=>{
     const close=(answer)=>{
       const cleared={msg:null,onYes:null,onNo:null};
       confirmStateRef.current=cleared;
       setConfirmState(cleared);
       res(answer);
     };
-    const state={msg,onYes:()=>close(true),onNo:()=>close(false)};
+    const state={msg,okOnly:!!okOnly,onYes:()=>close(true),onNo:()=>close(false)};
     confirmStateRef.current=state;
     setConfirmState(state);
   });
@@ -2985,7 +3146,13 @@ function App(){
   };
   window.__ptOnBack=()=>{ stepBackRef.current(); };
   window.__ptFlush=()=>{ flushScreenRef.current&&flushScreenRef.current("hide"); };
-  const selectPatient=(p,directEvalKey=null)=>{
+  const selectPatient=async(p,directEvalKey=null,left=false)=>{
+    const same=!!(patientRef.current&&patientRef.current.id===p.id);
+    // 넓은 화면에서 이미 열려 있는 환자를 다시 누르면 작성 중인 폼을 그대로 둔다.
+    if(isTablet&&same&&!directEvalKey){ setPatient(p); patientRef.current=p; return; }
+    if(!left&&!(await beforeLeave())) return;
+    // 앞 환자의 "이어서" 버튼이 새 환자에게 적용되지 않게 한다.
+    if(!same) setToastData(t=>t.nextEval?{...t,nextEval:null}:t);
     setPatient(p);
     patientRef.current=p;
     if(!isTablet) setMobileViewSync("content");
@@ -3006,6 +3173,16 @@ function App(){
         }
       },80);
     }
+  };
+  // 명단에서 지운 환자의 화면이 열려 있으면 닫는다. id가 null이면 전체 삭제.
+  const onPatientsRemoved=(id)=>{
+    const cur=patientRef.current;
+    if(!cur||(id!==null&&cur.id!==id)) return;
+    setPatient(null);
+    patientRef.current=null;
+    setMobileViewSync("list");
+    setToastData(t=>t.nextEval?{...t,nextEval:null}:t);
+    onScreen({patientId:null, rv:"eval-select", tab:"item", ek:null, editRecId:null, dropDraft:true}, "user");
   };
   const leaveChart=()=>{
     if(!isTablet){
@@ -3056,6 +3233,11 @@ function App(){
     const s=bootNav;
     const restored=!!(s&&s.patientId&&(s.mobileView==="content"||s.rv==="eval-form"||s.rv==="eval-history"||s.rv==="date-view"||s.dirty));
     if(restored) showToast("이전에 작성하던 화면을 복원했습니다", 4000);
+    if(dataRecovery==="latest"||dataRecovery==="prev"){
+      useConfirm("저장된 데이터를 읽을 수 없어 앱 안의 "+(dataRecovery==="latest"?"최신":"이전")+" 복사본으로 복구했습니다.\n\n최근 기록이 빠지지 않았는지 확인하고, 파일 백업을 받아 주세요.", true);
+    }else if(dataRecovery==="none"){
+      useConfirm("저장된 데이터를 읽을 수 없고, 앱 안에 쓸 수 있는 복사본도 없습니다.\n\n새로 입력하기 전에 파일 백업으로 복원해 주세요.", true);
+    }
   },[]);
   // 가로(태블릿 폭)에서 작성하다 세로로 돌리면 mobileView가 list로 남아 폼이 숨는다.
   useEffect(()=>{
@@ -3067,7 +3249,7 @@ function App(){
   },[isTablet]);
   return(
     <div className="layout-shell">
-      <ConfirmDialog msg={confirmState.msg} onYes={confirmState.onYes} onNo={confirmState.onNo}/>
+      <ConfirmDialog msg={confirmState.msg} onYes={confirmState.onYes} onNo={confirmState.onNo} okOnly={confirmState.okOnly}/>
       <Toast data={toastData} onAction={handleToastAction}/>
 
       {showReleaseNotes&&(
@@ -3080,9 +3262,28 @@ function App(){
             <div style={{display:"flex",flexDirection:"column",gap:"18px"}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
-                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.23</span>
+                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.24</span>
                   <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.26</span>
                   <span style={{background:"#dcfce7",color:"#16a34a",borderRadius:"5px",padding:"1px 7px",fontSize:"11px",fontWeight:600}}>최신</span>
+                </div>
+                <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  <li style={{fontSize:"13px",color:"#334155"}}>넓은 화면에서 작성 중 다른 환자를 눌러도 입력이 자동저장돼요</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>10mWT: 시간을 지우고 다시 시작하면 0초부터 재요</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>10mWT: 측정 중에 저장하거나 나가면 먼저 물어봐요</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>10mWT 0초는 평균에서 빼고, FAC는 0~5만 입력돼요</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>‘이어서’ 버튼을 눌러도 작성 중인 기록이 섞이지 않아요</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>저장 데이터가 깨지면 앱 안 복사본으로 복구하고 알려 줘요</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>저장하지 못하면 알려 주고 입력 화면을 유지해요</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>환자를 삭제하면 열려 있던 그 환자 화면도 닫혀요</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>공유 파일에 장애진단 ROM과 손가락 ROM이 들어가요</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>메모에서 Enter로 줄을 바꾸고, 줄바꿈이 그대로 보여요</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>날짜별 모아보기에서 수정 후 저장하면 목록으로 돌아와요</li>
+                </ul>
+              </div>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
+                  <span style={{background:"#64748b",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.23</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.26</span>
                 </div>
                 <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
                   <li style={{fontSize:"13px",color:"#334155"}}>업데이트할 때 다른 앱의 오프라인 저장본을 지우지 않아요</li>
@@ -3226,7 +3427,9 @@ function App(){
               <div style={{fontSize:"13px",color:"#64748b",lineHeight:1.6}}>앱이 업데이트되었어요.<br/>주요 변경사항을 확인해보세요.</div>
             </div>
               <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
-              <li style={{fontSize:"13px",color:"#334155"}}>업데이트할 때 다른 앱의 오프라인 저장본을 지우지 않아요</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>작성 중인 기록이 사라지거나 섞이던 문제를 고쳤어요</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>10mWT 다시 재기는 0초부터 시작해요</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>공유 파일에 장애진단 ROM과 손가락 ROM이 들어가요</li>
             </ul>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);setShowReleaseNotes(true);}} style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>자세히 보기</button>
@@ -3276,17 +3479,17 @@ function App(){
       </div>
       <div className="main-area">
         <div className="panel-left" style={!isTablet&&mobileView==="content"?{display:"none"}:{}}>
-          <PatientListPanel db={db} persist={persist} selectedPatient={patient} onSelect={selectPatient} useConfirm={useConfirm} dismissRef={dismissRef}/>
+          <PatientListPanel db={db} persist={persist} getDb={getDb} beforeLeave={beforeLeave} onPatientsRemoved={onPatientsRemoved} selectedPatient={patient} onSelect={selectPatient} useConfirm={useConfirm} dismissRef={dismissRef}/>
         </div>
         <div className="panel-right" style={!isTablet&&mobileView==="list"?{display:"none"}:{display:"block",flex:1,overflow:"hidden"}}>
-          <ContentPanel db={db} persist={persist} patient={patient} isTablet={isTablet} onBackToList={leaveChart} goBackRef={contentGoBackRef} directNavRef={contentDirectNavRef} useConfirm={useConfirm} showToast={showToast} initialNav={bootNav} onScreen={onScreen} requestBackRef={requestBackRef} onDraft={onDraft}/>
+          <ContentPanel db={db} persist={persist} getDb={getDb} leaveFormRef={leaveFormRef} patient={patient} isTablet={isTablet} onBackToList={leaveChart} goBackRef={contentGoBackRef} directNavRef={contentDirectNavRef} useConfirm={useConfirm} showToast={showToast} initialNav={bootNav} onScreen={onScreen} requestBackRef={requestBackRef} onDraft={onDraft}/>
         </div>
       </div>
     </div>
   );
 }
 
-function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,useConfirm,onScoreChange,onDraft,restoreDirty}){
+function EvalForm({template,col,initialData,onSave,dirtyRef,leaveRef,useConfirm,onScoreChange,onDraft,restoreDirty}){
   const todayStr=localDateStr();
   const buildInit=()=>{
     const init={};
@@ -3458,19 +3661,25 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
   const timerRefs=React.useRef({});
   const trialTouch=React.useRef({active:false,moved:false,suppressClick:false});
 
+  const startAtRef=React.useRef({}); // 측정 중인 시행의 시작 시각
+  // 시작 버튼은 시간 칸이 비어 있을 때만 나온다. 항상 0초부터 잰다.
   const startTimer=(id)=>{
+    if(startAtRef.current[id]!=null) return;
     beepHaptic("start");
-    const startTime=Date.now()-((timers[id]?.elapsed||0)*1000);
+    const startTime=Date.now();
+    startAtRef.current[id]=startTime;
+    clearInterval(timerRefs.current[id]);
     timerRefs.current[id]=setInterval(()=>{
       const elapsed=(Date.now()-startTime)/1000;
       setTimers(prev=>({...prev,[id]:{...prev[id],running:true,elapsed}}));
     },50);
-    setTimers(prev=>({...prev,[id]:{...prev[id],running:true}}));
+    setTimers(prev=>({...prev,[id]:{running:true,elapsed:0}}));
   };
 
   const stopTimer=(id)=>{
     beepHaptic("stop");
     clearInterval(timerRefs.current[id]);
+    delete startAtRef.current[id];
     setTimers(prev=>{
       const elapsed=prev[id].elapsed;
       const val=elapsed.toFixed(2);
@@ -3486,8 +3695,28 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
 
   const resetTimer=(id)=>{
     clearInterval(timerRefs.current[id]);
+    delete startAtRef.current[id];
     setTimers(prev=>({...prev,[id]:{running:false,elapsed:0}}));
     setF(id,"");
+  };
+
+  // 측정 중에 저장하거나 나가려 할 때 묻는다. 누른 순간의 시간을 기록하면 true, 계속 재면 false.
+  const confirmRunning=async()=>{
+    const now=Date.now();
+    const snap=Object.keys(startAtRef.current).map(id=>[id,((now-startAtRef.current[id])/1000).toFixed(2)]);
+    if(!snap.length) return true;
+    const list=snap.map(([id,v])=>`시행 ${id.slice(-1)}: ${v}초`).join("\n");
+    const ok=await useConfirm(`타이머가 아직 측정 중입니다.\n${list}\n\n이 시간으로 기록하고 저장할까요?\n"아니오"를 누르면 계속 측정합니다.`);
+    if(!ok) return false;
+    const next={...fdRef.current};
+    snap.forEach(([id,v])=>{
+      clearInterval(timerRefs.current[id]);
+      delete startAtRef.current[id];
+      next[id]=v;
+      setTimers(prev=>({...prev,[id]:{running:false,elapsed:parseFloat(v)}}));
+    });
+    editFd(next);
+    return true;
   };
 
   useEffect(()=>{
@@ -3497,26 +3726,13 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
   // 10mWT 자동계산
   useEffect(()=>{
     if(template?.fields?.find(f=>f.id==="avg"&&f.type==="number_auto")){
-      const vals=["trial1","trial2","trial3"].map(k=>parseFloat(fd[k])).filter(v=>!isNaN(v));
-      const svals=["steps1","steps2","steps3"].map(k=>parseFloat(fd[k])).filter(v=>!isNaN(v));
-      const steps_avg=svals.length>0?(svals.reduce((a,b)=>a+b,0)/svals.length).toFixed(1):"";
-      if(vals.length>0){
-        const avg=(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2);
-        const speed=(10/parseFloat(avg)).toFixed(3);
-        setFdState(prev=>{
-          const next={...prev,avg,speed,steps_avg};
-          fdRef.current=next;
-          if(dirtyRef&&dirtyRef.current&&onDraft) onDraft(next, true, "input");
-          return next;
-        });
-      } else {
-        setFdState(prev=>{
-          const next={...prev,avg:"",speed:"",steps_avg};
-          fdRef.current=next;
-          if(dirtyRef&&dirtyRef.current&&onDraft) onDraft(next, true, "input");
-          return next;
-        });
-      }
+      const calc=calc10mWT(fd);
+      setFdState(prev=>{
+        const next={...prev,...calc};
+        fdRef.current=next;
+        if(dirtyRef&&dirtyRef.current&&onDraft) onDraft(next, true, "input");
+        return next;
+      });
     }
   },[fd.trial1,fd.trial2,fd.trial3,fd.steps1,fd.steps2,fd.steps3]);
 
@@ -3548,50 +3764,34 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
   const isTestFailure = fd["test_failure"] === "Test failure";
   const FAILURE_DISABLED = ["speed_type","trial1","trial2","trial3","avg","speed","steps_avg","assistive","orthosis","assist_level","steps1","steps2","steps3"];
 
-  const handleSave=()=>{
+  // 저장할 값. 방금 바뀐 입력까지 담기도록 fdRef를 쓴다.
+  const buildFinal=()=>{
+    const final={...fdRef.current};
+    const sum=k=>(final[k]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
+    if(template?.fields?.find(f=>f.id==="avg"&&f.type==="number_auto")) Object.assign(final,calc10mWT(final));
+    if(template?.fields?.find(f=>f.type==="bbs_full")) final.bbs_total=sum("_bbs");
+    if(template?.fields?.find(f=>f.type==="fga_full")) final.fga_total=sum("_fga");
+    if(template?.fields?.find(f=>f.type==="fogq_full")) final.fogq_total=sum("_fogq");
+    return final;
+  };
+  // 저장에 실패하면 폼과 입력을 그대로 둔다(작성 중 표시도 유지).
+  const handleSave=async()=>{
     setSaveTried(true);
-    const final={...fd};
+    if(Object.keys(startAtRef.current).length&&!(await confirmRunning())) return;
+    const final=buildFinal();
     // 검사일 미입력 시 오늘 날짜로 자동 채움
     if(final.date===undefined||final.date==="") final.date=localDateStr();
-    if(template?.fields?.find(f=>f.type==="bbs_full")){
-      final.bbs_total=(fd["_bbs"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
-    }
-    if(template?.fields?.find(f=>f.type==="fga_full")){
-      final.fga_total=(fd["_fga"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
-    }
-    if(template?.fields?.find(f=>f.type==="fogq_full")){
-      final.fogq_total=(fd["_fogq"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
-    }
-    setIsDirty(false);
-    if(dirtyRef) dirtyRef.current=false;
-    if(onDraft) onDraft(final, false, "user");
     onSave(final,false);
   };
-  const handleAutoSave=()=>{
-    // 빌드된 final 데이터를 그대로 handleSave 로직 재활용 - onSave에 isAuto=true 전달
-    const final={...fd};
-    if(template?.fields?.find(f=>f.type==="bbs_full")){
-      final.bbs_total=(fd["_bbs"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
-    }
-    if(template?.fields?.find(f=>f.type==="fga_full")){
-      final.fga_total=(fd["_fga"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
-    }
-    if(template?.fields?.find(f=>f.type==="fogq_full")){
-      final.fogq_total=(fd["_fogq"]||[]).reduce((s,v)=>s+(typeof v==="number"?v:parseInt(v)||0),0);
-    }
-    setIsDirty(false);
-    if(dirtyRef) dirtyRef.current=false;
-    if(onDraft) onDraft(final, false, "user");
-    onSave(final,true);
+  // 폼을 떠나기 전(뒤로가기·다른 환자 선택·이어서 버튼)에 부른다.
+  const handleLeave=async()=>{
+    if(Object.keys(startAtRef.current).length&&!(await confirmRunning())) return "stay";
+    if(!(dirtyRef&&dirtyRef.current)) return "clean";
+    if(onSave(buildFinal(),true)) return "saved";
+    const leave=await useConfirm("저장하지 못했습니다.\n기기의 저장 공간이 부족할 수 있습니다.\n\n저장하지 않고 나갈까요?\n\"아니오\"를 누르면 입력한 화면에 남습니다.");
+    return leave?"discard":"stay";
   };
-
-  // saveRef에 handleAutoSave 등록 (뒤로가기 자동저장용)
-  useEffect(()=>{ if(saveRef) saveRef.current=handleAutoSave; },[fd,isDirty]);
-
-  const handleCancel=()=>{
-    if(isDirty){ handleAutoSave(); return; }
-    onCancel();
-  };
+  useEffect(()=>{ if(leaveRef) leaveRef.current=handleLeave; });
 
   return(
     <div>
@@ -4148,10 +4348,13 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                 <input style={{border:"1.5px solid #e2e8f0",borderRadius:"8px",padding:"10px 6px",outline:"none",color:tm.running?"#2563eb":"#1e293b",width:"70px",fontSize:"16px",textAlign:"center",fontVariantNumeric:"tabular-nums",fontWeight:tm.running?700:400,background:"#fff"}}
                   type="text" inputMode="decimal"
                   placeholder="" value={display}
-                  onChange={e=>{if(!tm.running)setF(field.id,e.target.value);}}
+                  onChange={e=>{if(!tm.running)setF(field.id,cleanSeconds(e.target.value));}}
                   onKeyDown={e=>{if(e.key==="Enter"||e.key==="Go"||e.key==="Next")e.target.blur();}}
                   readOnly={tm.running}
                 />
+                {!tm.running&&fd[field.id]&&!(parseFloat(fd[field.id])>0)&&(
+                  <div style={{fontSize:"10px",fontWeight:700,color:"#dc2626",marginTop:"3px",width:"70px"}}>0초는 평균에서 제외</div>
+                )}
               </div>
               <div style={{opacity:stepsDisabled?0.35:1,pointerEvents:stepsDisabled?"none":"auto"}}>
                 <div style={{fontSize:"11px",fontWeight:700,color:"#64748b",marginBottom:"4px",textTransform:"uppercase",letterSpacing:"0.5px"}}>스텝 수</div>
@@ -4228,10 +4431,16 @@ function EvalForm({template,col,initialData,onSave,onCancel,dirtyRef,saveRef,use
                 )}
               </div>
             ):field.type==="textarea"?(
-              <textarea style={S.textarea} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&e.shiftKey)return;if(e.key==="Enter"){e.preventDefault();e.target.blur();}}}/>
+              <textarea style={S.textarea} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)}/>
             ):(
               (
-                <input style={{...S.input,borderColor:field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"#60a5fa":undefined, borderWidth:field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"2px":undefined}} type="text" inputMode={field.inputMode||(field.type==="number"?"decimal":undefined)} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>setF(field.id,e.target.value)} onKeyDown={e=>{if(e.key==="Enter"||e.key==="Go"||e.key==="Next")e.target.blur();}}/>
+                <input style={{...S.input,borderColor:field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"#60a5fa":undefined, borderWidth:field.id==="trial1"||field.id==="trial2"||field.id==="trial3"?"2px":undefined}} type="text" inputMode={field.inputMode||(field.type==="number"?"decimal":undefined)} placeholder={field.placeholder} value={fd[field.id]||""} onChange={e=>{
+                  const facField=field.id==="score"&&template.fields.find(f=>f.type==="fac_select"&&f.linkedTo==="score");
+                  if(!facField){ setF(field.id,e.target.value); return; }
+                  // FAC는 0~5 한 자리만 받고, 위의 단계 선택과 맞춘다.
+                  const v=e.target.value.replace(/[^0-5]/g,"").slice(-1);
+                  editFd(prev=>({...prev,score:v,[facField.id]:v}));
+                }} onKeyDown={e=>{if(e.key==="Enter"||e.key==="Go"||e.key==="Next")e.target.blur();}}/>
               )
             )}
           </div>
