@@ -1322,29 +1322,22 @@ function TiltTable({data, onChange, readOnly}){
       <div>
         <div style={{display:"flex",flexDirection:"column",gap:"8px",marginBottom:"8px"}}>
           {rows.map((row,i)=>(
-            <div key={i} style={{background:i===0?"#fff7ed":"#fff",border:"1.5px solid #fde8cc",borderRadius:"10px",padding:"10px 12px"}}>
-              {/* 각도 */}
-              <div style={{marginBottom:"8px"}}>
-                <span style={{fontWeight:800,fontSize:"13px",color:"#7c2d12"}}>{row.angle||"—"}</span>
-              </div>
-              {/* 수치: 시간 → BP(SBP/DBP) → HR → SpO2 */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px"}}>
-                <div style={{textAlign:"center"}}>
-                  <div style={{fontSize:"10px",color:"#94a3b8"}}>시간</div>
-                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.time?row.time+"분":"—"}</div>
-                </div>
-                <div style={{textAlign:"center"}}>
-                  <div style={{fontSize:"10px",color:"#94a3b8"}}>BP</div>
-                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b",whiteSpace:"nowrap"}}>{row.sbp||row.dbp?(row.sbp||"—")+"/"+(row.dbp||"—"):"—"}</div>
-                </div>
-                <div style={{textAlign:"center"}}>
-                  <div style={{fontSize:"10px",color:"#94a3b8"}}>HR</div>
-                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.hr||"—"}</div>
-                </div>
-                <div style={{textAlign:"center"}}>
-                  <div style={{fontSize:"10px",color:"#94a3b8"}}>SpO2</div>
-                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.spo2?row.spo2+"%":"—"}</div>
-                </div>
+            <div key={i} style={{background:i===0?"#fff7ed":"#fff",border:"1.5px solid #fde8cc",borderRadius:"10px",padding:"8px 6px"}}>
+              {/* 한 줄 다섯 칸: 각도 → 시간 → BP(SBP/DBP) → HR → SpO2.
+                  좁은 폰(320px)에서도 넘치지 않게 칸은 minmax(0,…)로 줄어들고, 글자는 화면 폭에 맞춰 11~14px로 바뀐다. */}
+              <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.35fr) minmax(0,0.8fr) minmax(0,1.3fr) minmax(0,0.8fr) minmax(0,0.9fr)",gap:"2px",alignItems:"start"}}>
+                {[
+                  ["각도", row.angle||"—", {color:"#7c2d12",fontWeight:800,whiteSpace:"normal",wordBreak:"keep-all",lineHeight:1.2}],
+                  ["시간", row.time?row.time+"분":"—"],
+                  ["BP", row.sbp||row.dbp?(row.sbp||"—")+"/"+(row.dbp||"—"):"—"],
+                  ["HR", row.hr||"—"],
+                  ["SpO2", row.spo2?row.spo2+"%":"—"],
+                ].map(([label,value,extra])=>(
+                  <div key={label} style={{textAlign:"center",minWidth:0}}>
+                    <div style={{fontSize:"10px",color:"#94a3b8"}}>{label}</div>
+                    <div style={{fontSize:"clamp(11px, 3.4vw, 14px)",fontWeight:700,color:"#1e293b",whiteSpace:"nowrap",overflowWrap:"anywhere",...(extra||{})}}>{value}</div>
+                  </div>
+                ))}
               </div>
               {hasSymptom(row)&&(
                 <div style={{marginTop:"6px",display:"inline-block",background:"#fee2e2",color:"#c2410c",borderRadius:"6px",padding:"2px 8px",fontSize:"12px",fontWeight:700}}>
@@ -3291,7 +3284,7 @@ function App(){
                   <span style={{background:"#dcfce7",color:"#16a34a",borderRadius:"5px",padding:"1px 7px",fontSize:"11px",fontWeight:600}}>최신</span>
                 </div>
                 <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
-                  <li style={{fontSize:"13px",color:"#334155"}}>기립경사훈련 기록 보기: 시간·BP·HR·SpO2 네 칸으로 보여요. BP는 120/80처럼 합쳐서 보여요</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>기립경사훈련 기록 보기: 각도·시간·BP·HR·SpO2를 한 줄로 보여요. BP는 120/80처럼 합쳐서 보여요</li>
                 </ul>
               </div>
               <div>
@@ -3469,7 +3462,7 @@ function App(){
               <div style={{fontSize:"13px",color:"#64748b",lineHeight:1.6}}>앱이 업데이트되었어요.<br/>주요 변경사항을 확인해보세요.</div>
             </div>
               <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
-              <li style={{fontSize:"13px",color:"#334155"}}>기립경사훈련 기록 보기가 시간·BP·HR·SpO2 네 칸으로 바뀌었어요</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>기립경사훈련 기록 보기가 각도·시간·BP·HR·SpO2 한 줄로 바뀌었어요</li>
             </ul>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);setShowReleaseNotes(true);}} style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>자세히 보기</button>
