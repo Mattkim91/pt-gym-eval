@@ -242,7 +242,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v8.25</title>
+  <title>환자 평가 관리 v8.26</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -680,7 +680,7 @@ const maskName=(name)=>{
   return name[0]+"O"+name.slice(2);
 };
 
-const APP_VERSION = "v8.25";
+const APP_VERSION = "v8.26";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장","기립경사훈련"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1294,11 +1294,14 @@ function PatientListPanel({db,persist,getDb,beforeLeave,onPatientsRemoved,select
 }
 
 // ── 기립경사훈련 테이블 ───────────────────────────────────────────
-const TILT_ANGLES=["Supine (0°)","20°","30°","40°","45°","50°","60°","70°","80°","Recovery"];
+const TILT_ANGLES=["0°","20°","30°","40°","45°","50°","60°","70°","80°","Recovery"];
 const TILT_SYMPTOMS=["없음","어지럼증","구토감","창백함","식은땀","실신","두통","흉통","기타"];
 
+// 예전 기록의 "Supine (0°)"는 "0°"로 보여 준다. 저장된 값은 사용자가 각도를 바꿀 때만 새 값으로 바뀐다.
+function tiltAngle(a){ return a==="Supine (0°)"?"0°":a; }
+
 function TiltTable({data, onChange, readOnly}){
-  const rows=Array.isArray(data)&&data.length>0 ? data : [{angle:"Supine (0°)",time:"",sbp:"",dbp:"",hr:"",spo2:"",symptoms:"없음"}];
+  const rows=Array.isArray(data)&&data.length>0 ? data : [{angle:"0°",time:"",sbp:"",dbp:"",hr:"",spo2:"",symptoms:"없음"}];
   const setRows=newRows=>{ if(onChange) onChange(newRows); };
   const updateRow=(i,key,val)=>{
     const next=rows.map((r,idx)=>idx===i?{...r,[key]:val}:r);
@@ -1322,30 +1325,22 @@ function TiltTable({data, onChange, readOnly}){
       <div>
         <div style={{display:"flex",flexDirection:"column",gap:"8px",marginBottom:"8px"}}>
           {rows.map((row,i)=>(
-            <div key={i} style={{background:i===0?"#fff7ed":"#fff",border:"1.5px solid #fde8cc",borderRadius:"10px",padding:"10px 12px"}}>
-              {/* 각도 + 경과시간 한 줄 */}
-              <div style={{display:"flex",alignItems:"baseline",gap:"6px",marginBottom:"8px"}}>
-                <span style={{fontWeight:800,fontSize:"13px",color:"#7c2d12"}}>{row.angle||"—"}</span>
-                {row.time&&<span style={{fontSize:"11px",color:"#94a3b8"}}>· {row.time}분</span>}
-              </div>
-              {/* 수치: 각도 옆 순서대로 SBP→DBP→HR→SpO2 */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px"}}>
-                <div style={{textAlign:"center"}}>
-                  <div style={{fontSize:"10px",color:"#94a3b8"}}>SBP</div>
-                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.sbp||"—"}</div>
-                </div>
-                <div style={{textAlign:"center"}}>
-                  <div style={{fontSize:"10px",color:"#94a3b8"}}>DBP</div>
-                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.dbp||"—"}</div>
-                </div>
-                <div style={{textAlign:"center"}}>
-                  <div style={{fontSize:"10px",color:"#94a3b8"}}>HR</div>
-                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.hr||"—"}</div>
-                </div>
-                <div style={{textAlign:"center"}}>
-                  <div style={{fontSize:"10px",color:"#94a3b8"}}>SpO2</div>
-                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.spo2?row.spo2+"%":"—"}</div>
-                </div>
+            <div key={i} style={{background:i===0?"#fff7ed":"#fff",border:"1.5px solid #fde8cc",borderRadius:"10px",padding:"8px 6px"}}>
+              {/* 한 줄 다섯 칸: 각도 → 시간 → BP(SBP/DBP) → HR → SpO2.
+                  좁은 폰(320px)에서도 넘치지 않게 칸은 minmax(0,…)로 줄어들고, 글자는 화면 폭에 맞춰 11~14px로 바뀐다. */}
+              <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.35fr) minmax(0,0.8fr) minmax(0,1.3fr) minmax(0,0.8fr) minmax(0,0.9fr)",gap:"2px",alignItems:"start"}}>
+                {[
+                  ["각도", tiltAngle(row.angle)||"—", {color:"#7c2d12",fontWeight:800,whiteSpace:"normal",wordBreak:"keep-all",lineHeight:1.2}],
+                  ["시간", row.time?row.time+"분":"—"],
+                  ["BP", row.sbp||row.dbp?(row.sbp||"—")+"/"+(row.dbp||"—"):"—"],
+                  ["HR", row.hr||"—"],
+                  ["SpO2", row.spo2?row.spo2+"%":"—"],
+                ].map(([label,value,extra])=>(
+                  <div key={label} style={{textAlign:"center",minWidth:0}}>
+                    <div style={{fontSize:"10px",color:"#94a3b8"}}>{label}</div>
+                    <div style={{fontSize:"clamp(11px, 3.4vw, 14px)",fontWeight:700,color:"#1e293b",whiteSpace:"nowrap",overflowWrap:"anywhere",...(extra||{})}}>{value}</div>
+                  </div>
+                ))}
               </div>
               {hasSymptom(row)&&(
                 <div style={{marginTop:"6px",display:"inline-block",background:"#fee2e2",color:"#c2410c",borderRadius:"6px",padding:"2px 8px",fontSize:"12px",fontWeight:700}}>
@@ -1369,7 +1364,7 @@ function TiltTable({data, onChange, readOnly}){
             <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"10px"}}>
               <div style={{flex:1}}>
                 <label style={labelS}>각도</label>
-                <select value={row.angle||""} onChange={e=>updateRow(i,"angle",e.target.value)} style={selS}>
+                <select value={tiltAngle(row.angle)||""} onChange={e=>updateRow(i,"angle",e.target.value)} style={selS}>
                   <option value="">선택</option>
                   {TILT_ANGLES.map(a=><option key={a} value={a}>{a}</option>)}
                 </select>
@@ -1643,7 +1638,7 @@ function buildPrintHtml(patient, date, items, templates){
           rows.forEach((row,i)=>{
             const symColor=(row.symptoms&&row.symptoms!=="없음")?"color:#c2410c;font-weight:700":"";
             body+=`<tr style="background:${i%2===0?"#fffbf7":"#fff"}">
-              <td style="padding:4px;border:1px solid #fde8cc;text-align:center;font-weight:600;color:#7c2d12;">${row.angle||"—"}</td>
+              <td style="padding:4px;border:1px solid #fde8cc;text-align:center;font-weight:600;color:#7c2d12;">${tiltAngle(row.angle)||"—"}</td>
               <td style="padding:4px;border:1px solid #fde8cc;text-align:center;">${row.time||"—"}</td>
               <td style="padding:4px;border:1px solid #fde8cc;text-align:center;font-weight:600;">${row.sbp||"—"}</td>
               <td style="padding:4px;border:1px solid #fde8cc;text-align:center;font-weight:600;">${row.dbp||"—"}</td>
@@ -3287,9 +3282,19 @@ function App(){
             <div style={{display:"flex",flexDirection:"column",gap:"18px"}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
-                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.25</span>
-                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.26</span>
+                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.26</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.28</span>
                   <span style={{background:"#dcfce7",color:"#16a34a",borderRadius:"5px",padding:"1px 7px",fontSize:"11px",fontWeight:600}}>최신</span>
+                </div>
+                <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  <li style={{fontSize:"13px",color:"#334155"}}>기립경사훈련 기록 보기: 각도·시간·BP·HR·SpO2를 한 줄로 보여요. BP는 120/80처럼 합쳐서 보여요</li>
+                  <li style={{fontSize:"13px",color:"#334155"}}>기립경사훈련 첫 각도 ‘Supine (0°)’를 ‘0°’로 줄였어요</li>
+                </ul>
+              </div>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
+                  <span style={{background:"#64748b",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.25</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.26</span>
                 </div>
                 <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
                   <li style={{fontSize:"13px",color:"#334155"}}>상단의 백업·복원을 ‘백업’ 버튼 하나로 모았어요. 누르면 백업과 복원 중에 고를 수 있어요</li>
@@ -3461,7 +3466,7 @@ function App(){
               <div style={{fontSize:"13px",color:"#64748b",lineHeight:1.6}}>앱이 업데이트되었어요.<br/>주요 변경사항을 확인해보세요.</div>
             </div>
               <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
-              <li style={{fontSize:"13px",color:"#334155"}}>복원은 이제 상단 ‘백업’ 버튼을 누르면 나와요</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>기립경사훈련 기록 보기가 각도·시간·BP·HR·SpO2 한 줄로 바뀌었어요</li>
             </ul>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);setShowReleaseNotes(true);}} style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>자세히 보기</button>
@@ -3533,7 +3538,7 @@ function EvalForm({template,col,initialData,onSave,dirtyRef,leaveRef,useConfirm,
       else if(f.type==="fogq_full") init[f.id]=FOGQ_ITEMS.map(()=>null);
       else if(f.type==="rom_table") init[f.id]={};
       else if(f.type==="disrom_table") init[f.id]={};
-      else if(f.type==="tilt_table") init[f.id]=[{angle:"Supine (0°)",time:"",sbp:"",dbp:"",hr:"",spo2:"",symptoms:"없음"}];
+      else if(f.type==="tilt_table") init[f.id]=[{angle:"0°",time:"",sbp:"",dbp:"",hr:"",spo2:"",symptoms:"없음"}];
       else if(f.type==="date") init[f.id]=todayStr;
       else if(f.type==="toggle") init[f.id]=f.id==="test_failure"?"":f.options?.[0]||"";
       else init[f.id]="";
@@ -4280,7 +4285,7 @@ function EvalForm({template,col,initialData,onSave,dirtyRef,leaveRef,useConfirm,
         }
 
         if(field.type==="tilt_table"){
-          const tiltData=fd["_tilt"]||[{angle:"Supine (0°)",time:"",sbp:"",dbp:"",hr:"",spo2:"",symptoms:"없음"}];
+          const tiltData=fd["_tilt"]||[{angle:"0°",time:"",sbp:"",dbp:"",hr:"",spo2:"",symptoms:"없음"}];
           return(
             <div key={field.id}>
               <TiltTable
