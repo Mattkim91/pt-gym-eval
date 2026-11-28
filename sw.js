@@ -1,7 +1,7 @@
 // 앱 껍데기만 캐시한다. 환자 데이터(localStorage)는 캐시에 넣지 않는다.
 // 같은 주소(origin)의 다른 앱 캐시는 건드리지 않도록, 이 접두사로 시작하는 것만 지운다.
 const CACHE_PREFIX = 'pt-eval-shell-';
-const CACHE = 'pt-eval-shell-v8.25';
+const CACHE = 'pt-eval-shell-v8.26';
 const ASSETS = [
   './',
   './index.html',

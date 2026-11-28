@@ -242,7 +242,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="환자평가" />
   <meta name="theme-color" content="#ffffff" />
-  <title>환자 평가 관리 v8.25</title>
+  <title>환자 평가 관리 v8.26</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
@@ -680,7 +680,7 @@ const maskName=(name)=>{
   return name[0]+"O"+name.slice(2);
 };
 
-const APP_VERSION = "v8.25";
+const APP_VERSION = "v8.26";
 const EVAL_KEYS = ["10mWT","ROM","MMT","BBS","FAC","FGA","FOG-Q","지체장애ROM","메모장","기립경사훈련"];
 const EVAL_COLORS = {
   "10mWT":{ bg:"#e8f4fd", border:"#3b9ede", text:"#1a5f8a", accent:"#3b9ede" },
@@ -1323,20 +1323,19 @@ function TiltTable({data, onChange, readOnly}){
         <div style={{display:"flex",flexDirection:"column",gap:"8px",marginBottom:"8px"}}>
           {rows.map((row,i)=>(
             <div key={i} style={{background:i===0?"#fff7ed":"#fff",border:"1.5px solid #fde8cc",borderRadius:"10px",padding:"10px 12px"}}>
-              {/* 각도 + 경과시간 한 줄 */}
-              <div style={{display:"flex",alignItems:"baseline",gap:"6px",marginBottom:"8px"}}>
+              {/* 각도 */}
+              <div style={{marginBottom:"8px"}}>
                 <span style={{fontWeight:800,fontSize:"13px",color:"#7c2d12"}}>{row.angle||"—"}</span>
-                {row.time&&<span style={{fontSize:"11px",color:"#94a3b8"}}>· {row.time}분</span>}
               </div>
-              {/* 수치: 각도 옆 순서대로 SBP→DBP→HR→SpO2 */}
+              {/* 수치: 시간 → BP(SBP/DBP) → HR → SpO2 */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px"}}>
                 <div style={{textAlign:"center"}}>
-                  <div style={{fontSize:"10px",color:"#94a3b8"}}>SBP</div>
-                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.sbp||"—"}</div>
+                  <div style={{fontSize:"10px",color:"#94a3b8"}}>시간</div>
+                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.time?row.time+"분":"—"}</div>
                 </div>
                 <div style={{textAlign:"center"}}>
-                  <div style={{fontSize:"10px",color:"#94a3b8"}}>DBP</div>
-                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b"}}>{row.dbp||"—"}</div>
+                  <div style={{fontSize:"10px",color:"#94a3b8"}}>BP</div>
+                  <div style={{fontSize:"14px",fontWeight:700,color:"#1e293b",whiteSpace:"nowrap"}}>{row.sbp||row.dbp?(row.sbp||"—")+"/"+(row.dbp||"—"):"—"}</div>
                 </div>
                 <div style={{textAlign:"center"}}>
                   <div style={{fontSize:"10px",color:"#94a3b8"}}>HR</div>
@@ -3287,9 +3286,18 @@ function App(){
             <div style={{display:"flex",flexDirection:"column",gap:"18px"}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
-                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.25</span>
-                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.26</span>
+                  <span style={{background:"#2563eb",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.26</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.28</span>
                   <span style={{background:"#dcfce7",color:"#16a34a",borderRadius:"5px",padding:"1px 7px",fontSize:"11px",fontWeight:600}}>최신</span>
+                </div>
+                <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
+                  <li style={{fontSize:"13px",color:"#334155"}}>기립경사훈련 기록 보기: 시간·BP·HR·SpO2 네 칸으로 보여요. BP는 120/80처럼 합쳐서 보여요</li>
+                </ul>
+              </div>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px"}}>
+                  <span style={{background:"#64748b",color:"#fff",borderRadius:"6px",padding:"2px 9px",fontSize:"12px",fontWeight:700}}>v8.25</span>
+                  <span style={{fontSize:"11px",color:"#94a3b8"}}>2026.11.26</span>
                 </div>
                 <ul style={{paddingLeft:"16px",display:"flex",flexDirection:"column",gap:"5px"}}>
                   <li style={{fontSize:"13px",color:"#334155"}}>상단의 백업·복원을 ‘백업’ 버튼 하나로 모았어요. 누르면 백업과 복원 중에 고를 수 있어요</li>
@@ -3461,7 +3469,7 @@ function App(){
               <div style={{fontSize:"13px",color:"#64748b",lineHeight:1.6}}>앱이 업데이트되었어요.<br/>주요 변경사항을 확인해보세요.</div>
             </div>
               <ul style={{paddingLeft:"18px",marginBottom:"20px",display:"flex",flexDirection:"column",gap:"6px"}}>
-              <li style={{fontSize:"13px",color:"#334155"}}>복원은 이제 상단 ‘백업’ 버튼을 누르면 나와요</li>
+              <li style={{fontSize:"13px",color:"#334155"}}>기립경사훈련 기록 보기가 시간·BP·HR·SpO2 네 칸으로 바뀌었어요</li>
             </ul>
             <div style={{display:"flex",gap:"8px"}}>
               <button onClick={()=>{setShowUpdateBanner(false);localStorage.setItem("pt_seen_version",APP_VERSION);setShowReleaseNotes(true);}} style={{flex:1,background:"#f1f5f9",color:"#475569",border:"none",borderRadius:"10px",padding:"11px",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>자세히 보기</button>
